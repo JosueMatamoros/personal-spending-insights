@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Acceso from './components/Acceso.jsx';
 import Ajustes from './components/Ajustes.jsx';
 import Bloqueo from './components/Bloqueo.jsx';
+import Badge from './components/Badge.jsx';
 import Dona from './components/Dona.jsx';
 import HojaCategoria from './components/HojaCategoria.jsx';
-import { CATEGORIAS, cat } from './lib/categorias.js';
+import { ChevronLeft, ChevronRight, CircleDashed, RefreshCw, ScanFace, Settings, Sprout } from 'lucide-react';
+import { CATEGORIAS, POR_CLASIFICAR, cat, normalizarCategoria } from './lib/categorias.js';
 import { SesionVencida, borrarSesion, cambiarCategoria, cerrarSesion, guardarCache, leerCache, leerSesion, obtenerGastos, sincronizar } from './lib/api.js';
 import { K_PREGUNTADO, activarFaceId, faceIdActivo, faceIdDisponible } from './lib/faceid.js';
 import { claveMes, colones, nombreComercio, diaDelMes, etiquetaDia, hora, mesDeFecha, moverMes, nombreMes } from './lib/formato.js';
@@ -17,7 +19,7 @@ export default function App() {
   const [bloqueado, setBloqueado] = useState(() => Boolean(leerSesion()) && faceIdActivo());
   const [ajustes, setAjustes] = useState(false);
   const [ofrecerFaceId, setOfrecerFaceId] = useState(false);
-  const [gastos, setGastos] = useState(() => leerCache()?.gastos || []);
+  const [gastos, setGastos] = useState(() => (leerCache()?.gastos || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) })));
   const [mes, setMes] = useState(() => {
     const actual = claveMes(new Date());
     return actual < MES_INICIO ? MES_INICIO : actual;
@@ -29,7 +31,7 @@ export default function App() {
   const conectado = Boolean(sesion);
 
   const actualizar = useCallback((lista) => {
-    setGastos(lista);
+    setGastos((lista || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) })));
     guardarCache(lista);
   }, []);
 
@@ -65,7 +67,7 @@ export default function App() {
     try {
       const d = await sincronizar();
       actualizar(d.gastos);
-      mostrarAviso(d.nuevos ? `${d.nuevos} gasto${d.nuevos === 1 ? '' : 's'} nuevo${d.nuevos === 1 ? '' : 's'} 🌿` : 'Todo al día ✓');
+      mostrarAviso(d.nuevos ? `${d.nuevos} gasto${d.nuevos === 1 ? '' : 's'} nuevo${d.nuevos === 1 ? '' : 's'}` : 'Todo al día');
     } catch (e) {
       if (e instanceof SesionVencida) salir();
       else mostrarAviso(e.message, 'error');
@@ -98,11 +100,26 @@ export default function App() {
     if (!si) return;
     try {
       await activarFaceId();
-      mostrarAviso('Face ID activado 🔒');
+      mostrarAviso('Face ID activado');
     } catch {
       mostrarAviso('No se pudo activar Face ID. Puedes intentarlo en Ajustes.', 'error');
     }
   }
+
+  // Enlace directo a un gasto (desde una notificación): #gasto=<id>
+  useEffect(() => {
+    if (bloqueado || !gastos.length) return;
+    const abrir = () => {
+      const m = location.hash.match(/^#gasto=(.+)$/);
+      if (!m) return;
+      const g = gastos.find((x) => x.id === decodeURIComponent(m[1]));
+      history.replaceState(null, '', location.pathname);
+      if (g) { setMes(g.fecha.slice(0, 7)); setEditando(g); }
+    };
+    abrir();
+    window.addEventListener('hashchange', abrir);
+    return () => window.removeEventListener('hashchange', abrir);
+  }, [bloqueado, gastos]);
 
   // Vuelve a bloquear con Face ID si la app estuvo en segundo plano un rato
   useEffect(() => {
@@ -125,7 +142,7 @@ export default function App() {
       const d = await cambiarCategoria(g.id, categoria);
       actualizar(d.gastos);
       const otros = d.actualizados - 1;
-      mostrarAviso(otros > 0 ? `Listo. También moví ${otros} gasto${otros === 1 ? '' : 's'} más de ${nombreComercio(g.comercio)}` : `Movido a ${cat(categoria).emoji} ${categoria}`);
+      mostrarAviso(otros > 0 ? `Listo. También moví ${otros} gasto${otros === 1 ? '' : 's'} más de ${nombreComercio(g.comercio)}` : `Movido a ${categoria}`);
     } catch (e) {
       actualizar(anterior);
       if (e instanceof SesionVencida) return salir();
@@ -146,7 +163,7 @@ export default function App() {
     const totalPrev = suma(delPrev);
     const hayPrev = prev >= MES_INICIO;
 
-    const porCat = CATEGORIAS.map((c) => {
+    const porCat = [...CATEGORIAS, { nombre: POR_CLASIFICAR }].map((c) => {
       const t = suma(delMes.filter((g) => g.categoria === c.nombre));
       const tp = suma(delPrev.filter((g) => g.categoria === c.nombre));
       return { nombre: c.nombre, total: t, prev: tp, cantidad: delMes.filter((g) => g.categoria === c.nombre).length };
@@ -162,7 +179,8 @@ export default function App() {
       dias[dias.length - 1].items.push(g);
     });
 
-    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, dias, cantidad: delMes.length, cantidadFiltro: movimientos.length };
+    const pendientes = delMes.filter((g) => g.categoria === POR_CLASIFICAR);
+    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, dias, pendientes, cantidad: delMes.length, cantidadFiltro: movimientos.length };
   }, [gastos, mes, filtro]);
 
   if (!conectado) {
@@ -187,18 +205,18 @@ export default function App() {
         </div>
         <div className="barra-acc">
           <button className={'icono' + (cargando ? ' girando' : '')} onClick={refrescar} aria-label="Buscar gastos nuevos" title="Buscar gastos nuevos">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 5v6h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <RefreshCw size={19} strokeWidth={2} />
           </button>
           <button className="icono" onClick={() => setAjustes(true)} aria-label="Ajustes" title="Ajustes">
-            <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <Settings size={19} strokeWidth={2} />
           </button>
         </div>
       </header>
 
       <nav className="mes">
-        <button className="icono" disabled={!puedeAtras} onClick={() => { setMes(moverMes(mes, -1)); setFiltro(null); }} aria-label="Mes anterior">‹</button>
+        <button className="icono" disabled={!puedeAtras} onClick={() => { setMes(moverMes(mes, -1)); setFiltro(null); }} aria-label="Mes anterior"><ChevronLeft size={22} /></button>
         <h1>{nombreMes(mes)}</h1>
-        <button className="icono" disabled={!puedeAdelante} onClick={() => { setMes(moverMes(mes, 1)); setFiltro(null); }} aria-label="Mes siguiente">›</button>
+        <button className="icono" disabled={!puedeAdelante} onClick={() => { setMes(moverMes(mes, 1)); setFiltro(null); }} aria-label="Mes siguiente"><ChevronRight size={22} /></button>
       </nav>
 
       <section className="total tarjeta">
@@ -217,9 +235,20 @@ export default function App() {
         )}
       </section>
 
+      {reporte.pendientes.length > 0 && filtro !== POR_CLASIFICAR && (
+        <button className="pendientes tarjeta" onClick={() => { setFiltro(POR_CLASIFICAR); setTimeout(() => document.querySelector('.movs')?.scrollIntoView({ behavior: 'smooth' }), 50); }}>
+          <CircleDashed size={22} strokeWidth={2} color="#D9B24C" />
+          <span>
+            <strong>{reporte.pendientes.length} gasto{reporte.pendientes.length === 1 ? '' : 's'} por clasificar</strong>
+            <span className="muted pequeno">{colones(reporte.pendientes.reduce((t, g) => t + g.monto, 0))} · tócalos para elegir su categoría</span>
+          </span>
+          <ChevronRight size={18} color="var(--muted)" />
+        </button>
+      )}
+
       {reporte.cantidad === 0 ? (
         <section className="vacio tarjeta">
-          <p className="vacio-emoji">🌱</p>
+          <Sprout size={34} strokeWidth={1.6} color="var(--musgo)" />
           <p>{cargando ? 'Buscando tus gastos…' : 'Todavía no hay gastos este mes.'}</p>
           {!cargando && <button className="btn-sec" onClick={refrescar}>Buscar en el correo</button>}
         </section>
@@ -232,7 +261,7 @@ export default function App() {
               total={reporte.total}
               seleccion={filtro}
               onSeleccion={setFiltro}
-              centro={filtro ? { valor: colones(totalFiltro), etiqueta: cat(filtro).emoji + ' ' + filtro.split(' ')[0] } : { valor: reporte.cantidad, etiqueta: reporte.cantidad === 1 ? 'movimiento' : 'movimientos' }}
+              centro={filtro ? { valor: colones(totalFiltro), etiqueta: filtro === POR_CLASIFICAR ? 'por clasificar' : filtro.split(' ')[0].toLowerCase() } : { valor: reporte.cantidad, etiqueta: reporte.cantidad === 1 ? 'movimiento' : 'movimientos' }}
             />
             <ul className="lista-cat">
               {reporte.porCat.map((c) => {
@@ -243,7 +272,7 @@ export default function App() {
                 return (
                   <li key={c.nombre}>
                     <button className={'fila-cat' + (activo ? ' activo' : '') + (filtro && !activo ? ' apagado' : '')} onClick={() => setFiltro(activo ? null : c.nombre)} style={{ '--c': info.color }}>
-                      <span className="badge">{info.emoji}</span>
+                      <Badge categoria={c.nombre} />
                       <span className="fila-txt">
                         <span className="fila-nombre">{c.nombre}</span>
                         <span className="barra-pct"><span style={{ width: pct + '%' }} /></span>
@@ -266,7 +295,7 @@ export default function App() {
 
           <section className="movs">
             <div className="movs-cab">
-              <h2>{filtro ? `${cat(filtro).emoji} ${filtro}` : 'Movimientos'}</h2>
+              <h2 className="tit-icono">{filtro ? <><Badge categoria={filtro} size={15} className="mini-badge" />{filtro}</> : 'Movimientos'}</h2>
               {filtro && <button className="btn-link" onClick={() => setFiltro(null)}>Ver todos</button>}
             </div>
             {reporte.dias.map((d) => (
@@ -274,14 +303,13 @@ export default function App() {
                 <p className="dia-tit">{etiquetaDia(d.dia)}</p>
                 <ul className="tarjeta lista-mov">
                   {d.items.map((g) => {
-                    const info = cat(g.categoria);
                     return (
                       <li key={g.id}>
                         <button className="mov" onClick={() => setEditando(g)}>
-                          <span className="badge" style={{ '--c': info.color }}>{info.emoji}</span>
+                          <Badge categoria={g.categoria} />
                           <span className="mov-txt">
                             <span className="mov-nombre">{nombreComercio(g.comercio)}</span>
-                            <span className="pequeno muted">{g.banco}{g.tipo === 'SINPE' ? ' · SINPE' : ''} · {hora(g.fecha)}{g.categoria === 'Otros' ? ' · toca para clasificar' : ''}</span>
+                            <span className="pequeno muted">{g.banco}{g.tipo === 'SINPE' ? ' · SINPE' : ''} · {hora(g.fecha)}{g.categoria === POR_CLASIFICAR ? ' · toca para clasificar' : ''}</span>
                           </span>
                           <span className="num mov-monto">{colones(g.monto)}</span>
                         </button>
@@ -308,7 +336,7 @@ export default function App() {
         <div className="velo">
           <section className="hoja hoja-faceid" role="dialog" aria-label="Activar Face ID">
             <div className="hoja-asa" />
-            <p className="faceid-emoji">🔒</p>
+            <ScanFace className="faceid-emoji" size={40} strokeWidth={1.5} color="var(--musgo)" />
             <h2>¿Usar Face ID para abrir Mis Gastos?</h2>
             <p className="muted">Así nadie más puede ver tus gastos aunque tenga tu celular desbloqueado. Tu sesión queda activa por un mes.</p>
             <div className="confirmar-btns">

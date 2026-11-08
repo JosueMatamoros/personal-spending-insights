@@ -33,7 +33,7 @@ export default function HojaCategoria({ gasto, onElegir, onCerrar }) {
               style={{ '--c': c.color }}
               onClick={() => onElegir(c.nombre)}
             >
-              <span className="chip-emoji">{c.emoji}</span>
+              <c.Icono size={18} strokeWidth={1.9} color={c.color} />
               {c.nombre}
             </button>
           ))}

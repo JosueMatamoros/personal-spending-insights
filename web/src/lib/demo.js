@@ -15,9 +15,9 @@ const base = [
   ['2026-11-04T08:00', 'Popular', 'SINPE', 'SINPE · Alquiler', 95000, 'Vivienda'],
   ['2026-11-05T12:22', 'Popular', 'Tarjeta', 'Mini Super y Licorera Don Alajuela', 5700, 'Supermercado'],
   ['2026-11-05T15:10', 'BCR', 'Tarjeta', 'Farmacia Fischel', 12350, 'Salud'],
-  ['2026-11-06T13:05', 'BAC', 'Tarjeta', 'Shein', 18400, 'Compras'],
-  ['2026-11-06T20:30', 'BAC', 'Tarjeta', 'Bar La Terraza', 11000, 'Otros'],
-  ['2026-11-07T09:15', 'Popular', 'SINPE', 'SINPE (sin descripción)', 6000, 'Otros'],
+  ['2026-11-06T13:05', 'BAC', 'Tarjeta', 'Shein', 18400, ''],
+  ['2026-11-06T20:30', 'BAC', 'Tarjeta', 'Bar La Terraza', 11000, ''],
+  ['2026-11-07T09:15', 'Popular', 'SINPE', 'SINPE (sin descripción)', 6000, ''],
 ];
 
 let gastos = base.map(([fecha, banco, tipo, comercio, monto, categoria], i) => ({

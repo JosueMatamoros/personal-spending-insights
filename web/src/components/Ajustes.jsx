@@ -20,7 +20,7 @@ export default function Ajustes({ sesion, onCerrarSesion, onCerrar, avisar }) {
     try {
       await activarFaceId();
       setActivo(true);
-      avisar('Face ID activado 🔒');
+      avisar('Face ID activado');
     } catch {
       avisar('No se pudo activar Face ID', 'error');
     }

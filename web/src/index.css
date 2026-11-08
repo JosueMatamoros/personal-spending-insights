@@ -227,3 +227,15 @@ h2 { font-size: 0.95rem; font-weight: 700; letter-spacing: -0.005em; }
 .hoja-faceid { text-align: center; }
 .hoja-faceid h2 { font-size: 1.15rem; margin: 6px 0 8px; }
 .faceid-emoji { font-size: 2.2rem; }
+
+/* ── Por clasificar ── */
+.pendientes {
+  width: 100%; margin-top: 12px; padding: 14px 16px; display: flex; align-items: center; gap: 14px; text-align: left;
+  border-color: rgba(217, 178, 76, 0.35); background: linear-gradient(135deg, rgba(217, 178, 76, 0.10), var(--superficie) 70%);
+}
+.pendientes > span { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.pendientes strong { font-size: 0.92rem; }
+.tit-icono { display: flex; align-items: center; gap: 8px; }
+.mini-badge { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 18%, transparent); }
+.faceid-emoji { display: block; margin: 4px auto 0; }
+.vacio svg { margin: 0 auto; }

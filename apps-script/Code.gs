@@ -11,13 +11,16 @@
 var FECHA_INICIO = '2026-11-01';      // Primer día que se carga
 var TIPO_CAMBIO_USD = 505;            // Si llega una compra en dólares, se convierte a ₡ con este valor
 
+// Gasto que el script no pudo clasificar: queda esperando a que ella lo clasifique.
+var POR_CLASIFICAR = '';
+
 var HOJA_GASTOS = 'Gastos';
 var HOJA_REGLAS = 'Reglas';
 var COLUMNAS = ['id', 'fecha', 'banco', 'tipo', 'comercio', 'monto', 'moneda', 'montoOriginal', 'categoria', 'manual', 'messageId'];
 
 var CATEGORIAS = [
   'Supermercado', 'Comida y restaurantes', 'Transporte', 'Servicios', 'Vivienda',
-  'Salud', 'Compras', 'Entretenimiento', 'Suscripciones', 'Otros'
+  'Salud', 'Entretenimiento', 'Suscripciones', 'Otros'
 ];
 
 var REMITENTES = {
@@ -37,12 +40,12 @@ var PALABRAS_CLAVE = [
     'CAFE', 'CAFETERIA', 'COFFEE', 'RESTAURANTE', 'RESTAURANT', 'REST', 'SODA', 'UBER EATS', 'UBEREATS', 'RAPPI', 'DIDI FOOD', 'PEDIDOSYA',
     'PEDIDOS YA', 'WENDYS', 'CHURCHS', 'BAR', 'SUSHI', 'POLLO', 'POLLOS', 'BRASA', 'PANADERIA', 'REPOSTERIA', 'HELADOS', 'HELADERIA', 'BOSTON',
     'DOMINOS', 'PAPA JOHNS', 'CHINESE', 'CHINO', 'TACOS', 'BURGER', 'BURGERS', 'GRILL', 'COMIDA', 'ALMUERZO', 'DESAYUNO', 'CENA', 'TAQUERIA',
-    'MARISQUERIA', 'PIZZAHUT', 'PIZZA HUT', 'CAFE BRITT', 'BAGELMENS', 'ROOFTOP']],
+    'MARISQUERIA', 'CEVICHERA', 'CEVICHE', 'DINER', 'PIZZAHUT', 'PIZZA HUT', 'CAFE BRITT', 'BAGELMENS', 'ROOFTOP']],
   ['Supermercado', ['AUTOMERCADO', 'AUTO MERCADO', 'WALMART', 'WAL MART', 'MAS X MENOS', 'MASXMENOS', 'PALI', 'MAXI PALI', 'MAXIPALI', 'PRICESMART',
     'PRICE SMART', 'PERIMERCADOS', 'PERI', 'MEGASUPER', 'MEGA SUPER', 'FRESH MARKET', 'SUPER', 'MINI SUPER', 'MINISUPER', 'SUPERMERCADO',
-    'AMPM', 'AM PM', 'VINDI', 'CARNICERIA', 'VERDULERIA', 'FERIA', 'PULPERIA', 'ABASTECEDOR', 'MERCADO', 'LICORERA', 'COMPRAS SUPER']],
+    'AMPM', 'AM PM', 'VINDI', 'CARNICERIA', 'VERDULERIA', 'FERIA', 'PULPERIA', 'ABASTECEDOR', 'MERCADO', 'LICORERA', 'COMPRAS SUPER', 'CONVENIENCE']],
   ['Transporte', ['UBER', 'DIDI', 'INDRIVER', 'TAXI', 'GASOLINERA', 'SERVICENTRO', 'ESTACION DE SERVICIO', 'DELTA', 'PUMA', 'TEXACO', 'SHELL',
-    'GASOLINA', 'COMBUSTIBLE', 'PARQUEO', 'PARKING', 'PEAJE', 'QUICK PASS', 'QUICKPASS', 'COMPASS', 'GLOBALVIA', 'AUTOBUS', 'BUS', 'BUSES',
+    'GASOLINA', 'COMBUSTIBLE', 'PARQUEO', 'PARKING', 'PEAJE', 'QUICK PASS', 'QUICKPASS', 'COMPASS', 'GLOBALVIA', 'GLOBAL VIA', 'AUTOBUS', 'BUS', 'BUSES',
     'RITEVE', 'MARCHAMO', 'TREN', 'INCOFER', 'LAVACAR', 'TALLER', 'LLANTAS', 'REPUESTOS']],
   ['Servicios', ['ICE', 'KOLBI', 'LIBERTY', 'CLARO', 'CNFL', 'AYA', 'ESPH', 'JASEC', 'COOPELESCA', 'COOPEGUANACASTE', 'CABLETICA', 'TIGO',
     'TELECABLE', 'AGUA', 'LUZ', 'ELECTRICIDAD', 'INTERNET', 'TELEFONO', 'CELULAR', 'RECARGA', 'MUNICIPALIDAD', 'CABLE']],
@@ -52,10 +55,7 @@ var PALABRAS_CLAVE = [
     'MEDICO', 'MEDICA', 'DENTAL', 'DENTISTA', 'ODONTOLOGIA', 'OPTICA', 'CCSS', 'CITA', 'DOCTOR', 'DOCTORA', 'PSICOLOGO', 'PSICOLOGA',
     'MEDICAMENTOS', 'SALUD', 'CIMA', 'HOSPITAL CLINICA BIBLICA', 'METROPOLITANO']],
   ['Entretenimiento', ['CINEPOLIS', 'CINEMARK', 'CCM', 'NOVA CINEMAS', 'CINE', 'TEATRO', 'TICKET', 'TICKETS', 'ETICKET', 'BOLETERIA', 'CONCIERTO',
-    'STEAM', 'PLAYSTATION', 'XBOX', 'NINTENDO', 'BOLICHE', 'KARAOKE', 'MUSEO', 'PARQUE', 'DISCOTECA', 'EVENTO', 'ENTRADAS', 'ZOOLOGICO']],
-  ['Compras', ['AMAZON', 'TEMU', 'SHEIN', 'ALIEXPRESS', 'EBAY', 'PEQUENO MUNDO', 'SIMAN', 'CARRION', 'ZARA', 'BERSHKA', 'PULL AND BEAR', 'MONGE',
-    'GOLLO', 'EXTREMO', 'UNIVERSAL', 'ADIDAS', 'NIKE', 'FOREVER', 'LIBRERIA', 'TIENDA', 'ROPA', 'ZAPATERIA', 'ZAPATOS', 'BOUTIQUE', 'IMPORTADORA',
-    'ISTORE', 'APPLE STORE', 'MULTIPLAZA', 'CITY MALL', 'LINCOLN PLAZA', 'MALL', 'ARENAS', 'MOSTRO', 'DOLLARCITY', 'CEMACO', 'OFFICE DEPOT']]
+    'STEAM', 'PLAYSTATION', 'XBOX', 'NINTENDO', 'BOLICHE', 'KARAOKE', 'MUSEO', 'PARQUE', 'DISCOTECA', 'EVENTO', 'ENTRADAS', 'ZOOLOGICO']]
 ];
 
 // ───────────────────────── Instalación ─────────────────────────
@@ -118,6 +118,7 @@ function sincronizar() {
     var hoja = hojaGastos_();
     var props = PropertiesService.getScriptProperties();
     var inicio = parseISO_(FECHA_INICIO);
+    migrarPorClasificar_(hoja, props);
 
     // Revisa desde 3 días antes de la última sincronización (por si algún correo llegó tarde).
     var ultima = props.getProperty('ULTIMA_SYNC');
@@ -165,6 +166,27 @@ function sincronizar() {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Una sola vez: lo que cayó solo en "Otros" o en "Compras" pasa a "Por clasificar". */
+function migrarPorClasificar_(hoja, props) {
+  if (props.getProperty('MIG_POR_CLASIFICAR')) return;
+  if (hoja.getLastRow() >= 2) {
+    var col = indices_();
+    var rango = hoja.getRange(2, 1, hoja.getLastRow() - 1, COLUMNAS.length);
+    var datos = rango.getValues();
+    var cambios = 0;
+    datos.forEach(function (r) {
+      var auto = r[col.manual] !== true;
+      if ((r[col.categoria] === 'Otros' && auto) || r[col.categoria] === 'Compras') {
+        r[col.categoria] = POR_CLASIFICAR;
+        r[col.manual] = false;
+        cambios++;
+      }
+    });
+    if (cambios) rango.setValues(datos);
+  }
+  props.setProperty('MIG_POR_CLASIFICAR', '1');
 }
 
 /** Devuelve una lista de gastos encontrados en un correo (normalmente uno). */
@@ -336,7 +358,7 @@ function normalizar_(s) {
 
 function categorizar_(texto, reglas) {
   var n = normalizar_(texto);
-  if (!n) return 'Otros';
+  if (!n) return POR_CLASIFICAR;
   var relleno = ' ' + n + ' ';
   // 1) Reglas aprendidas (cuando ella cambia una categoría en la app)
   for (var i = 0; i < reglas.length; i++) {
@@ -349,7 +371,7 @@ function categorizar_(texto, reglas) {
       if (relleno.indexOf(' ' + palabras[k] + ' ') >= 0) return PALABRAS_CLAVE[c][0];
     }
   }
-  return 'Otros';
+  return POR_CLASIFICAR;
 }
 
 function leerReglas_() {
@@ -604,7 +626,7 @@ function listarGastos_() {
         monto: Number(r[col.monto]) || 0,
         moneda: r[col.moneda],
         montoOriginal: Number(r[col.montoOriginal]) || 0,
-        categoria: CATEGORIAS.indexOf(r[col.categoria]) >= 0 ? r[col.categoria] : 'Otros'
+        categoria: CATEGORIAS.indexOf(r[col.categoria]) >= 0 ? r[col.categoria] : POR_CLASIFICAR
       };
     });
 }
@@ -636,6 +658,57 @@ function indices_() {
 }
 
 // ───────────────────────── Pruebas ─────────────────────────
+
+/**
+ * Revisión completa: busca TODOS los correos de los 3 bancos desde FECHA_INICIO
+ * (cualquier remitente de esos bancos) y muestra cuáles se registraron y cuáles no.
+ */
+function revisarCorreos() {
+  var inicio = parseISO_(FECHA_INICIO);
+  var hoja = hojaGastos_();
+  var existentes = idsExistentes_(hoja);
+  var dominios = ['baccredomatic', 'credomatic', 'bancobcr', 'bcr.fi.cr', 'bpdc.fi.cr', 'bancopopular', 'bp.fi.cr', 'popular.fi.cr'];
+  var query = '(' + dominios.map(function (d) { return 'from:' + d; }).join(' OR ') + ') after:' +
+    Utilities.formatDate(new Date(inicio.getTime() - 24 * 3600 * 1000), 'America/Costa_Rica', 'yyyy/MM/dd');
+
+  var resumen = {};
+  var noLeidos = [];
+  var total = 0, registrados = 0;
+  for (var start = 0; ; start += 100) {
+    var hilos = GmailApp.search(query, start, 100);
+    hilos.forEach(function (h) {
+      h.getMessages().forEach(function (m) {
+        if (m.getDate() < inicio) return;
+        total++;
+        var from = (m.getFrom().match(/<([^>]+)>/) || [null, m.getFrom()])[1].trim().toLowerCase();
+        var clave = from + ' · ' + m.getSubject();
+        resumen[clave] = resumen[clave] || { correos: 0, gastos: 0 };
+        resumen[clave].correos++;
+        var gastos = [];
+        try { gastos = leerCorreo_(m); } catch (e) { /* se reporta abajo */ }
+        if (gastos.length) {
+          resumen[clave].gastos += gastos.length;
+          gastos.forEach(function (g) { if (existentes[g.id]) registrados++; });
+        } else {
+          noLeidos.push(Utilities.formatDate(m.getDate(), 'America/Costa_Rica', 'dd/MM HH:mm') + ' · ' + clave + ' · ' + m.getPlainBody().replace(/\s+/g, ' ').slice(0, 140));
+        }
+      });
+    });
+    if (hilos.length < 100) break;
+  }
+
+  Logger.log('📬 Correos de bancos desde ' + FECHA_INICIO + ': ' + total + ' · gastos ya registrados: ' + registrados);
+  Object.keys(resumen).sort().forEach(function (k) {
+    Logger.log((resumen[k].gastos ? '✅ ' : '⚠️ ') + k + ' → ' + resumen[k].correos + ' correos, ' + resumen[k].gastos + ' gastos leídos');
+  });
+  if (noLeidos.length) {
+    Logger.log('— Correos que NO se convirtieron en gasto (' + noLeidos.length + '):');
+    noLeidos.forEach(function (l) { Logger.log('   ' + l); });
+  } else {
+    Logger.log('🎉 Todos los correos de los bancos se leyeron.');
+  }
+}
+
 
 /** Prueba la lectura con los últimos correos de cada banco, sin guardar nada. */
 function probarLectura() {
