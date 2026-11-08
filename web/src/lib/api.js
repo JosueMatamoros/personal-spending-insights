@@ -1,7 +1,8 @@
 import { demo } from './demo.js';
 
-const CLAVE_CONFIG = 'misgastos.config';
-const CLAVE_CACHE = 'misgastos.cache';
+const API_URL = import.meta.env.VITE_API_URL || '';
+const K_SESION = 'misgastos.sesion';
+const K_CACHE = 'misgastos.cache';
 
 function leer(k) {
   try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; }
@@ -10,33 +11,62 @@ function escribir(k, v) {
   try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento */ }
 }
 
-export function leerConfig() {
-  if (typeof location !== 'undefined' && location.hash === '#demo') return { url: 'demo', token: 'DEMO' };
-  const c = leer(CLAVE_CONFIG) || {};
-  return { url: c.url || import.meta.env.VITE_API_URL || '', token: c.token || '' };
+// ── Sesión ──
+export function leerSesion() {
+  if (typeof location !== 'undefined' && location.hash === '#demo') return { sesion: 'demo', expira: Infinity, demo: true };
+  const s = leer(K_SESION);
+  return s && s.expira > Date.now() ? s : null;
 }
-export const guardarConfig = (c) => escribir(CLAVE_CONFIG, c);
-export const borrarConfig = () => { escribir(CLAVE_CONFIG, null); escribir(CLAVE_CACHE, null); };
+const guardarSesion = (s) => escribir(K_SESION, s);
+export function borrarSesion() {
+  escribir(K_SESION, null);
+  escribir(K_CACHE, null);
+}
 
-export const leerCache = () => leer(CLAVE_CACHE);
-export const guardarCache = (gastos) => escribir(CLAVE_CACHE, { gastos, en: Date.now() });
+export const leerCache = () => leer(K_CACHE);
+export const guardarCache = (gastos) => escribir(K_CACHE, { gastos, en: Date.now() });
 
-async function llamar({ url, token }, params = {}) {
-  if (url === 'demo') return demo(params);
-  const q = new URLSearchParams({ token, ...params });
+export class SesionVencida extends Error {}
+
+async function llamar(action, datos = {}) {
+  const s = leerSesion();
+  if (s?.demo || datos.demo) return demo({ action, ...datos });
+  if (!API_URL) throw new Error('Falta configurar la dirección del servidor.');
   let res;
   try {
-    res = await fetch(`${url}?${q}`, { redirect: 'follow' });
+    // text/plain evita la verificación CORS previa que Apps Script no soporta
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, sesion: s?.sesion, ...datos }),
+      redirect: 'follow',
+    });
   } catch {
     throw new Error('Sin conexión. Mostrando los últimos datos guardados.');
   }
   if (!res.ok) throw new Error('El servidor no respondió (' + res.status + ').');
   let data;
-  try { data = await res.json(); } catch { throw new Error('La URL no parece ser la del Apps Script.'); }
-  if (!data.ok) throw new Error(data.error || 'Error desconocido');
+  try { data = await res.json(); } catch { throw new Error('Respuesta inesperada del servidor.'); }
+  if (!data.ok) {
+    if (data.error === 'Sesión vencida') { borrarSesion(); throw new SesionVencida(data.error); }
+    throw new Error(data.error || 'Error desconocido');
+  }
   return data;
 }
 
-export const obtenerGastos = (cfg) => llamar(cfg);
-export const sincronizar = (cfg) => llamar(cfg, { action: 'sync' });
-export const cambiarCategoria = (cfg, id, categoria) => llamar(cfg, { action: 'setCategory', id, categoria });
+function conSesion(data) {
+  guardarSesion({ sesion: data.sesion, expira: data.expira });
+  if (data.gastos) guardarCache(data.gastos);
+  return data;
+}
+
+export const estado = () => llamar('estado');
+export const login = async (cedula, password) => conSesion(await llamar('login', { cedula, password }));
+export const registrar = async (clave, cedula, password) => conSesion(await llamar('registrar', { clave, cedula, password }));
+export const obtenerGastos = () => llamar('gastos');
+export const sincronizar = () => llamar('sync');
+export const cambiarCategoria = (id, categoria) => llamar('setCategory', { id, categoria });
+export async function cerrarSesion() {
+  try { await llamar('logout'); } catch { /* igual se borra localmente */ }
+  borrarSesion();
+}

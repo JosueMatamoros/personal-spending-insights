@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Configurar from './components/Configurar.jsx';
+import Acceso from './components/Acceso.jsx';
+import Ajustes from './components/Ajustes.jsx';
+import Bloqueo from './components/Bloqueo.jsx';
 import Dona from './components/Dona.jsx';
 import HojaCategoria from './components/HojaCategoria.jsx';
 import { CATEGORIAS, cat } from './lib/categorias.js';
-import { borrarConfig, cambiarCategoria, guardarCache, guardarConfig, leerCache, leerConfig, obtenerGastos, sincronizar } from './lib/api.js';
+import { SesionVencida, borrarSesion, cambiarCategoria, cerrarSesion, guardarCache, leerCache, leerSesion, obtenerGastos, sincronizar } from './lib/api.js';
+import { K_PREGUNTADO, activarFaceId, faceIdActivo, faceIdDisponible } from './lib/faceid.js';
 import { claveMes, colones, nombreComercio, diaDelMes, etiquetaDia, hora, mesDeFecha, moverMes, nombreMes } from './lib/formato.js';
 
 const MES_INICIO = '2026-11';
+const RE_BLOQUEO_MS = 2 * 60 * 1000; // vuelve a pedir Face ID si la app estuvo cerrada 2 min
 
 export default function App() {
-  const [cfg, setCfg] = useState(leerConfig);
+  const [sesion, setSesion] = useState(leerSesion);
+  const [bloqueado, setBloqueado] = useState(() => Boolean(leerSesion()) && faceIdActivo());
+  const [ajustes, setAjustes] = useState(false);
+  const [ofrecerFaceId, setOfrecerFaceId] = useState(false);
   const [gastos, setGastos] = useState(() => leerCache()?.gastos || []);
   const [mes, setMes] = useState(() => {
     const actual = claveMes(new Date());
@@ -19,7 +26,7 @@ export default function App() {
   const [editando, setEditando] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState(null);
-  const conectado = Boolean(cfg.url && cfg.token);
+  const conectado = Boolean(sesion);
 
   const actualizar = useCallback((lista) => {
     setGastos(lista);
@@ -41,11 +48,11 @@ export default function App() {
     if (!conectado) return;
     let vivo = true;
     setCargando(true);
-    obtenerGastos(cfg)
+    obtenerGastos()
       .then((d) => vivo && actualizar(d.gastos))
       .catch((e) => {
         if (!vivo) return;
-        if (e.message === 'Clave incorrecta') { borrarConfig(); setCfg({ url: cfg.url, token: '' }); }
+        if (e instanceof SesionVencida) salir();
         else mostrarAviso(e.message, 'error');
       })
       .finally(() => vivo && setCargando(false));
@@ -56,15 +63,57 @@ export default function App() {
     if (cargando) return;
     setCargando(true);
     try {
-      const d = await sincronizar(cfg);
+      const d = await sincronizar();
       actualizar(d.gastos);
       mostrarAviso(d.nuevos ? `${d.nuevos} gasto${d.nuevos === 1 ? '' : 's'} nuevo${d.nuevos === 1 ? '' : 's'} 🌿` : 'Todo al día ✓');
     } catch (e) {
-      mostrarAviso(e.message, 'error');
+      if (e instanceof SesionVencida) salir();
+      else mostrarAviso(e.message, 'error');
     } finally {
       setCargando(false);
     }
   }
+
+  function salir() {
+    borrarSesion();
+    setSesion(null);
+    setBloqueado(false);
+    setGastos([]);
+    setAjustes(false);
+    if (location.hash === '#demo') history.replaceState(null, '', location.pathname);
+  }
+
+  async function entrar(lista) {
+    setSesion(leerSesion());
+    actualizar(lista);
+    // Ofrece Face ID una sola vez después del primer ingreso
+    let preguntado = false;
+    try { preguntado = Boolean(localStorage.getItem(K_PREGUNTADO)); } catch { /* nada */ }
+    if (!preguntado && !faceIdActivo() && await faceIdDisponible()) setOfrecerFaceId(true);
+  }
+
+  async function responderFaceId(si) {
+    setOfrecerFaceId(false);
+    try { localStorage.setItem(K_PREGUNTADO, '1'); } catch { /* nada */ }
+    if (!si) return;
+    try {
+      await activarFaceId();
+      mostrarAviso('Face ID activado 🔒');
+    } catch {
+      mostrarAviso('No se pudo activar Face ID. Puedes intentarlo en Ajustes.', 'error');
+    }
+  }
+
+  // Vuelve a bloquear con Face ID si la app estuvo en segundo plano un rato
+  useEffect(() => {
+    let oculto = 0;
+    const cambio = () => {
+      if (document.hidden) oculto = Date.now();
+      else if (oculto && Date.now() - oculto > RE_BLOQUEO_MS && faceIdActivo() && leerSesion()) setBloqueado(true);
+    };
+    document.addEventListener('visibilitychange', cambio);
+    return () => document.removeEventListener('visibilitychange', cambio);
+  }, []);
 
   async function elegirCategoria(categoria) {
     const g = editando;
@@ -73,12 +122,13 @@ export default function App() {
     const anterior = gastos;
     actualizar(gastos.map((x) => (x.id === g.id ? { ...x, categoria } : x)));
     try {
-      const d = await cambiarCategoria(cfg, g.id, categoria);
+      const d = await cambiarCategoria(g.id, categoria);
       actualizar(d.gastos);
       const otros = d.actualizados - 1;
       mostrarAviso(otros > 0 ? `Listo. También moví ${otros} gasto${otros === 1 ? '' : 's'} más de ${nombreComercio(g.comercio)}` : `Movido a ${cat(categoria).emoji} ${categoria}`);
     } catch (e) {
       actualizar(anterior);
+      if (e instanceof SesionVencida) return salir();
       mostrarAviso('No se pudo guardar: ' + e.message, 'error');
     }
   }
@@ -116,7 +166,10 @@ export default function App() {
   }, [gastos, mes, filtro]);
 
   if (!conectado) {
-    return <Configurar inicial={cfg} onListo={(c, lista) => { guardarConfig(c); setCfg(c); actualizar(lista); }} />;
+    return <Acceso onEntrar={entrar} />;
+  }
+  if (bloqueado) {
+    return <Bloqueo onDesbloquear={() => setBloqueado(false)} onUsarContrasena={salir} />;
   }
 
   const mesMax = claveMes(new Date());
@@ -136,8 +189,8 @@ export default function App() {
           <button className={'icono' + (cargando ? ' girando' : '')} onClick={refrescar} aria-label="Buscar gastos nuevos" title="Buscar gastos nuevos">
             <svg viewBox="0 0 24 24" width="20" height="20"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 5v6h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
-          <button className="icono" onClick={() => { if (window.confirm('¿Cerrar sesión en este dispositivo?')) { borrarConfig(); setCfg({ url: cfg.url, token: '' }); setGastos([]); } }} aria-label="Cerrar sesión" title="Cerrar sesión">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <button className="icono" onClick={() => setAjustes(true)} aria-label="Ajustes" title="Ajustes">
+            <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         </div>
       </header>
@@ -243,6 +296,28 @@ export default function App() {
       )}
 
       {editando && <HojaCategoria gasto={editando} onElegir={elegirCategoria} onCerrar={() => setEditando(null)} />}
+      {ajustes && (
+        <Ajustes
+          sesion={sesion}
+          avisar={mostrarAviso}
+          onCerrar={() => setAjustes(false)}
+          onCerrarSesion={async () => { await cerrarSesion(); salir(); }}
+        />
+      )}
+      {ofrecerFaceId && (
+        <div className="velo">
+          <section className="hoja hoja-faceid" role="dialog" aria-label="Activar Face ID">
+            <div className="hoja-asa" />
+            <p className="faceid-emoji">🔒</p>
+            <h2>¿Usar Face ID para abrir Mis Gastos?</h2>
+            <p className="muted">Así nadie más puede ver tus gastos aunque tenga tu celular desbloqueado. Tu sesión queda activa por un mes.</p>
+            <div className="confirmar-btns">
+              <button className="btn-sec" onClick={() => responderFaceId(false)}>Ahora no</button>
+              <button className="btn-primario" onClick={() => responderFaceId(true)}>Activar Face ID</button>
+            </div>
+          </section>
+        </div>
+      )}
       {aviso && <div key={aviso.id} className={'aviso ' + aviso.tipo} role="status">{aviso.texto}</div>}
     </div>
   );

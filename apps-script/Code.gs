@@ -60,7 +60,7 @@ var PALABRAS_CLAVE = [
 
 // ───────────────────────── Instalación ─────────────────────────
 
-/** Ejecutar UNA vez desde el editor: crea las hojas, la clave de acceso y el disparador automático. */
+/** Ejecutar UNA vez desde el editor: crea las hojas, la clave de acceso (para crear la cuenta) y el disparador automático. */
 function configurar() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error('Este script debe crearse desde la hoja de cálculo: Extensiones → Apps Script.');
@@ -413,32 +413,162 @@ function cambiarCategoria_(id, categoria) {
 
 // ───────────────────────── API para la app ─────────────────────────
 
-function doGet(e) {
+var DURACION_SESION_MS = 30 * 24 * 3600 * 1000;   // 1 mes
+var MAX_INTENTOS = 5;                              // intentos fallidos antes de bloquear
+var BLOQUEO_MS = 15 * 60 * 1000;                   // 15 minutos
+
+/** GET: solo para comprobar que el servicio está vivo (no devuelve datos). */
+function doGet() {
   return responder_(function () {
-    var p = (e && e.parameter) || {};
-    validarClave_(p.token);
-    if (p.action === 'sync') {
-      var r = sincronizar();
-      return { ok: true, nuevos: r.nuevos, gastos: listarGastos_() };
-    }
-    if (p.action === 'setCategory') {
-      var res = cambiarCategoria_(String(p.id), String(p.categoria));
-      return { ok: true, actualizados: res.actualizados, gastos: listarGastos_() };
-    }
-    return { ok: true, gastos: listarGastos_(), categorias: CATEGORIAS };
+    return { ok: true, servicio: 'Mis Gastos', registrado: estaRegistrado_() };
   });
 }
 
+/** POST: todas las acciones. El cuerpo es JSON con { action, ... }. */
 function doPost(e) {
   return responder_(function () {
-    var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    validarClave_(body.token);
-    if (body.action === 'setCategory') {
-      var res = cambiarCategoria_(String(body.id), String(body.categoria));
-      return { ok: true, actualizados: res.actualizados, gastos: listarGastos_() };
+    var b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    switch (b.action) {
+      case 'estado':
+        return { ok: true, registrado: estaRegistrado_() };
+      case 'registrar':
+        return registrar_(b.clave, b.cedula, b.password);
+      case 'login':
+        return login_(b.cedula, b.password);
+    }
+
+    // Lo demás requiere sesión activa
+    validarSesion_(b.sesion);
+    switch (b.action) {
+      case 'gastos':
+        return { ok: true, gastos: listarGastos_() };
+      case 'sync':
+        var r = sincronizar();
+        return { ok: true, nuevos: r.nuevos, gastos: listarGastos_() };
+      case 'setCategory':
+        var res = cambiarCategoria_(String(b.id), String(b.categoria));
+        return { ok: true, actualizados: res.actualizados, gastos: listarGastos_() };
+      case 'logout':
+        PropertiesService.getScriptProperties().deleteProperty('S_' + b.sesion);
+        return { ok: true };
     }
     throw new Error('Acción desconocida');
   });
+}
+
+// ───────────────────────── Acceso (cédula + contraseña) ─────────────────────────
+
+function estaRegistrado_() {
+  return Boolean(PropertiesService.getScriptProperties().getProperty('AUTH_PASS'));
+}
+
+/** Crea (o cambia) la cédula y contraseña. Exige la clave de acceso del script. */
+function registrar_(clave, cedula, password) {
+  revisarBloqueo_();
+  try {
+    validarClave_(clave);
+  } catch (e) {
+    registrarFallo_();
+    throw new Error('La clave de acceso no es correcta');
+  }
+  cedula = limpiarCedula_(cedula);
+  if (cedula.length < 9) throw new Error('La cédula debe tener al menos 9 dígitos');
+  password = String(password || '');
+  if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres');
+  var props = PropertiesService.getScriptProperties();
+  var sal = Utilities.getUuid();
+  props.setProperties({
+    AUTH_SAL: sal,
+    AUTH_CEDULA: hash_(cedula, sal),
+    AUTH_PASS: hash_(password, sal)
+  });
+  borrarSesiones_();
+  return crearSesion_();
+}
+
+function login_(cedula, password) {
+  var props = PropertiesService.getScriptProperties();
+  if (!estaRegistrado_()) throw new Error('Todavía no se ha creado el acceso');
+
+  revisarBloqueo_();
+  var sal = props.getProperty('AUTH_SAL');
+  var ok = hash_(limpiarCedula_(cedula), sal) === props.getProperty('AUTH_CEDULA') &&
+           hash_(String(password || ''), sal) === props.getProperty('AUTH_PASS');
+  if (!ok) {
+    registrarFallo_();
+    throw new Error('Cédula o contraseña incorrecta');
+  }
+  props.deleteProperty('AUTH_INTENTOS');
+  props.deleteProperty('AUTH_BLOQUEO');
+  return crearSesion_();
+}
+
+function revisarBloqueo_() {
+  var bloqueo = Number(PropertiesService.getScriptProperties().getProperty('AUTH_BLOQUEO') || 0);
+  if (bloqueo > Date.now()) {
+    var min = Math.ceil((bloqueo - Date.now()) / 60000);
+    throw new Error('Demasiados intentos. Intenta de nuevo en ' + min + ' min.');
+  }
+}
+
+function registrarFallo_() {
+  var props = PropertiesService.getScriptProperties();
+  var intentos = Number(props.getProperty('AUTH_INTENTOS') || 0) + 1;
+  if (intentos >= MAX_INTENTOS) {
+    props.setProperty('AUTH_BLOQUEO', String(Date.now() + BLOQUEO_MS));
+    intentos = 0;
+  }
+  props.setProperty('AUTH_INTENTOS', String(intentos));
+}
+
+function crearSesion_() {
+  var props = PropertiesService.getScriptProperties();
+  limpiarSesionesVencidas_();
+  var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  var expira = Date.now() + DURACION_SESION_MS;
+  props.setProperty('S_' + token, String(expira));
+  return { ok: true, sesion: token, expira: expira, gastos: listarGastos_() };
+}
+
+function validarSesion_(token) {
+  if (!token || !/^[a-f0-9]{64}$/.test(String(token))) throw new Error('Sesión vencida');
+  var expira = Number(PropertiesService.getScriptProperties().getProperty('S_' + token) || 0);
+  if (expira < Date.now()) throw new Error('Sesión vencida');
+}
+
+function limpiarSesionesVencidas_() {
+  var props = PropertiesService.getScriptProperties();
+  var todas = props.getProperties();
+  Object.keys(todas).forEach(function (k) {
+    if (k.indexOf('S_') === 0 && Number(todas[k]) < Date.now()) props.deleteProperty(k);
+  });
+}
+
+/** Cierra todas las sesiones abiertas (por ejemplo, si se pierde el celular). */
+function borrarSesiones_() {
+  var props = PropertiesService.getScriptProperties();
+  Object.keys(props.getProperties()).forEach(function (k) {
+    if (k.indexOf('S_') === 0) props.deleteProperty(k);
+  });
+}
+
+/** Ejecutar desde el editor para cerrar sesión en todos los dispositivos. */
+function cerrarTodasLasSesiones() {
+  borrarSesiones_();
+  Logger.log('✅ Se cerraron todas las sesiones.');
+}
+
+function limpiarCedula_(c) {
+  return String(c || '').replace(/\D/g, '');
+}
+
+/** SHA-256 repetido con sal: la contraseña nunca se guarda tal cual. */
+function hash_(texto, sal) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, sal + '|' + texto, Utilities.Charset.UTF_8);
+  for (var i = 0; i < 1500; i++) {
+    bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes.concat(Utilities.newBlob(sal).getBytes()));
+  }
+  return Utilities.base64Encode(bytes);
 }
 
 function responder_(fn) {

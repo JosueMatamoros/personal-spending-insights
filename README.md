@@ -34,7 +34,15 @@ Gmail ──(cada 15 min)──▶ Apps Script ──▶ Google Sheets ◀──
 
 ## 2. Abrir la app
 
-En la pantalla de inicio se pega la **URL** y la **clave**. Para instalarla en el celular:
+La primera vez se crea el acceso con la **clave de acceso del script**, la **cédula** y una **contraseña**
+(se guarda cifrada con sal en las propiedades del script). Después se entra con cédula + contraseña.
+
+- La sesión dura **1 mes**. Tras 5 intentos fallidos el acceso se bloquea 15 minutos.
+- **Face ID** (WebAuthn) bloquea la app en el celular; se activa al entrar o en Ajustes ⚙️.
+- ¿Celular perdido? Ejecutar `cerrarTodasLasSesiones` en el editor de Apps Script.
+- ¿Contraseña olvidada? "Crear una nueva" con la clave de acceso del script.
+
+Para instalarla en el celular:
 - **iPhone (Safari):** Compartir → *Agregar a pantalla de inicio*.
 - **Android (Chrome):** menú ⋮ → *Instalar app*.
 

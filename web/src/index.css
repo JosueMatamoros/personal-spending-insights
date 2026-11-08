@@ -191,3 +191,39 @@ h2 { font-size: 0.95rem; font-weight: 700; letter-spacing: -0.005em; }
 @keyframes aviso { from { opacity: 0; transform: translate(-50%, 10px); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .demo { margin-top: 18px; align-self: center; }
+
+/* ── Acceso ── */
+.config-form > input, .campo-pass input {
+  width: 100%; height: 54px; padding: 0 16px; border-radius: 14px; font: inherit; font-size: 1rem; color: var(--texto);
+  background: var(--superficie); border: 1px solid var(--borde);
+}
+.config-form > input::placeholder, .campo-pass input::placeholder { color: var(--muted); }
+.config-form { gap: 12px; }
+.config-form .btn-primario { margin-top: 6px; }
+.campo-pass { position: relative; }
+.campo-pass input { padding-right: 80px; }
+.ver-pass { position: absolute; right: 6px; top: 6px; height: 42px; padding: 0 12px; border-radius: 10px; color: var(--musgo); font-weight: 600; font-size: 0.85rem; }
+.demo-sec { margin-top: 4px; align-self: center; color: var(--muted); font-weight: 500; }
+.cargando-acceso { margin-top: 28px; }
+
+/* ── Bloqueo ── */
+.bloqueo { text-align: center; align-items: center; }
+.btn-faceid { margin-top: 28px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; }
+
+/* ── Ajustes ── */
+.ajustes-tit { font-size: 1.15rem; margin-bottom: 8px; }
+.ajuste { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--borde); }
+.ajuste-nombre { font-weight: 600; margin-bottom: 3px; }
+.switch { flex: none; width: 52px; height: 32px; border-radius: 99px; background: var(--pista); border: 1px solid var(--borde); position: relative; transition: background 0.2s; }
+.switch span { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--muted); transition: transform 0.2s, background 0.2s; }
+.switch.on { background: var(--musgo-fuerte); }
+.switch.on span { transform: translateX(20px); background: #F2F5EE; }
+.btn-salir { width: 100%; margin-top: 20px; height: 50px; border-radius: 14px; font-weight: 600; color: var(--sube); background: rgba(224, 137, 111, 0.1); }
+.confirmar { margin-top: 20px; display: grid; gap: 12px; }
+.confirmar-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.confirmar .confirmar-btns { margin-top: 0; }
+.confirmar-btns > button { height: 50px; }
+.btn-peligro { border-radius: 14px; font-weight: 700; background: #B65B45; color: #fff; }
+.hoja-faceid { text-align: center; }
+.hoja-faceid h2 { font-size: 1.15rem; margin: 6px 0 8px; }
+.faceid-emoji { font-size: 2.2rem; }
