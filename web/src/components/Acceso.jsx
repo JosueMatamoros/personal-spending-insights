@@ -18,11 +18,15 @@ export default function Acceso({ onEntrar }) {
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
 
-  useEffect(() => {
+  function revisar() {
+    setModo('cargando');
+    setError('');
     estado()
       .then((d) => setModo(d.registrado ? 'login' : 'registro'))
-      .catch(() => setModo('login'));
-  }, []);
+      .catch((e) => { setModo('error'); setError(e.message === 'Clave incorrecta' ? 'El servidor tiene una versión vieja del script. Actualízalo y crea una "Nueva versión" en Implementar.' : e.message); });
+  }
+
+  useEffect(revisar, []);
 
   async function enviar(e) {
     e.preventDefault();
@@ -56,6 +60,11 @@ export default function Acceso({ onEntrar }) {
 
       {modo === 'cargando' ? (
         <p className="muted cargando-acceso">Conectando…</p>
+      ) : modo === 'error' ? (
+        <div className="config-form">
+          <p className="error" role="alert">{error}</p>
+          <button className="btn-primario" onClick={revisar}>Reintentar</button>
+        </div>
       ) : (
         <form onSubmit={enviar} className="config-form">
           {registro && (
