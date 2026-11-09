@@ -3,46 +3,77 @@ import Acceso from './components/Acceso.jsx';
 import Ajustes from './components/Ajustes.jsx';
 import Bloqueo from './components/Bloqueo.jsx';
 import Badge from './components/Badge.jsx';
-import Dona from './components/Dona.jsx';
-import HojaCategoria from './components/HojaCategoria.jsx';
 import Categorias from './components/Categorias.jsx';
-import { ChevronLeft, ChevronRight, CircleDashed, RefreshCw, ScanFace, Settings, Sprout } from 'lucide-react';
-import { POR_CLASIFICAR, cat, categorias, normalizarCategoria, setCategorias } from './lib/categorias.js';
-import { SesionVencida, borrarCategoria, borrarSesion, cambiarCategoria, cerrarSesion, eliminarGasto, guardarCache, guardarCategoria, leerCache, leerSesion, obtenerGastos, restaurarGasto, sincronizar } from './lib/api.js';
+import Dona from './components/Dona.jsx';
+import Grupo from './components/Grupo.jsx';
+import HojaCategoria from './components/HojaCategoria.jsx';
+import NuevoGasto from './components/NuevoGasto.jsx';
+import { ChevronLeft, ChevronRight, CircleDashed, Plus, RefreshCw, ScanFace, Settings, Sprout, UserRound } from 'lucide-react';
+import { POR_CLASIFICAR, cat, categorias, idDe, normalizarCategoria, setCategorias } from './lib/categorias.js';
+import { iconoPorNombre } from './lib/iconos.js';
+import {
+  SesionVencida, borrarCategoria, borrarSesion, cambiarCategoria, cerrarSesion, crearCategoria, crearGasto, crearGrupo,
+  editarCategoria, editarGrupo, eliminarGasto, guardarCache, leerCache, leerSesion, moverGasto, obtenerDatos, restaurarGasto, sincronizar,
+} from './lib/api.js';
 import { K_PREGUNTADO, activarFaceId, faceIdActivo, faceIdDisponible } from './lib/faceid.js';
 import { claveMes, colones, nombreComercio, diaDelMes, etiquetaDia, hora, mesDeFecha, moverMes, nombreMes } from './lib/formato.js';
 
 const MES_INICIO = '2026-11';
 const RE_BLOQUEO_MS = 2 * 60 * 1000; // vuelve a pedir Face ID si la app estuvo cerrada 2 min
+const K_AMBITO = 'misgastos.ambito';
+const PERSONAL = 'personal';
+
+const VACIO = { usuario: null, usuarios: [], personal: { categorias: [], movimientos: [] }, grupos: [] };
+
+function leerAmbito() {
+  try { return localStorage.getItem(K_AMBITO) || PERSONAL; } catch { return PERSONAL; }
+}
 
 export default function App() {
   const [sesion, setSesion] = useState(leerSesion);
   const [bloqueado, setBloqueado] = useState(() => Boolean(leerSesion()) && faceIdActivo());
-  const [ajustes, setAjustes] = useState(false);
-  const [ofrecerFaceId, setOfrecerFaceId] = useState(false);
-  const [gastos, setGastos] = useState(() => {
-    const c = leerCache();
-    setCategorias(c?.categorias);
-    return (c?.gastos || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) }));
-  });
-  const [gestionCategorias, setGestionCategorias] = useState(false);
+  const [datos, setDatos] = useState(() => leerCache() || VACIO);
+  const [ambito, setAmbitoEstado] = useState(leerAmbito);
   const [mes, setMes] = useState(() => {
     const actual = claveMes(new Date());
     return actual < MES_INICIO ? MES_INICIO : actual;
   });
   const [filtro, setFiltro] = useState(null);
   const [editando, setEditando] = useState(null);
+  const [panel, setPanel] = useState(null); // ajustes | categorias | nuevo | grupo-nuevo | grupo-editar | faceid
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const conectado = Boolean(sesion);
+  const yo = datos.usuario?.id || sesion?.usuario?.id;
 
-  // `lista` = gastos del servidor; `cats` = categorías (si vienen en la respuesta)
-  const actualizar = useCallback((lista, cats) => {
-    if (cats) setCategorias(cats);
-    setGastos((lista || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) })));
-    guardarCache(lista, cats || categorias().map(({ nombre, icono, color }) => ({ nombre, icono, color })));
+  // ── Ámbito actual: personal o un grupo ──
+  const grupo = ambito === PERSONAL ? null : datos.grupos.find((g) => g.id === ambito) || null;
+  const scope = grupo || datos.personal;
+  const nombreAmbito = grupo ? grupo.nombre : 'Personal';
+  // Las categorías activas son las del ámbito (las usan Badge, Dona, las hojas…)
+  setCategorias(scope.categorias?.length ? scope.categorias : null);
+  const gastos = useMemo(
+    () => (scope.movimientos || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) })),
+    [scope]  
+  );
+
+  function setAmbito(a) {
+    setAmbitoEstado(a);
+    setFiltro(null);
+    try { localStorage.setItem(K_AMBITO, a); } catch { /* nada */ }
+  }
+
+  // Si el grupo guardado ya no existe, vuelve a personal
+  useEffect(() => {
+    if (ambito !== PERSONAL && datos.usuario && !datos.grupos.some((g) => g.id === ambito)) setAmbito(PERSONAL);
+  }, [datos, ambito]);
+
+  const aplicar = useCallback((d) => {
+    if (!d?.personal) return;
+    const limpio = { usuario: d.usuario, usuarios: d.usuarios, personal: d.personal, grupos: d.grupos };
+    setDatos(limpio);
+    guardarCache(limpio);
   }, []);
-  const aplicar = useCallback((d) => actualizar(d.gastos, d.categorias), [actualizar]);
 
   const mostrarAviso = useCallback((texto, tipo = 'ok', accion = null) => {
     setAviso({ texto, tipo, accion, id: Date.now() });
@@ -54,12 +85,35 @@ export default function App() {
     return () => clearTimeout(t);
   }, [aviso]);
 
-  // Al abrir: trae lo último de la hoja
+  function salir() {
+    borrarSesion();
+    setSesion(null);
+    setBloqueado(false);
+    setDatos(VACIO);
+    setPanel(null);
+    if (location.hash === '#demo') history.replaceState(null, '', location.pathname);
+  }
+
+  /** Ejecuta una llamada al servidor y aplica la respuesta; maneja errores comunes. */
+  async function hacer(fn, { error = 'No se pudo guardar', lanzar = false } = {}) {
+    try {
+      const d = await fn();
+      aplicar(d);
+      return d;
+    } catch (e) {
+      if (e instanceof SesionVencida) { salir(); return null; }
+      if (lanzar) throw e;
+      mostrarAviso(`${error}: ${e.message}`, 'error');
+      return null;
+    }
+  }
+
+  // Al abrir: trae lo último del servidor
   useEffect(() => {
     if (!conectado) return;
     let vivo = true;
     setCargando(true);
-    obtenerGastos()
+    obtenerDatos()
       .then((d) => vivo && aplicar(d))
       .catch((e) => {
         if (!vivo) return;
@@ -73,38 +127,21 @@ export default function App() {
   async function refrescar() {
     if (cargando) return;
     setCargando(true);
-    try {
-      const d = await sincronizar();
-      aplicar(d);
-      mostrarAviso(d.nuevos ? `${d.nuevos} gasto${d.nuevos === 1 ? '' : 's'} nuevo${d.nuevos === 1 ? '' : 's'}` : 'Todo al día');
-    } catch (e) {
-      if (e instanceof SesionVencida) salir();
-      else mostrarAviso(e.message, 'error');
-    } finally {
-      setCargando(false);
-    }
+    const d = await hacer(sincronizar, { error: 'No se pudo actualizar' });
+    setCargando(false);
+    if (d) mostrarAviso(d.nuevos ? `${d.nuevos} gasto${d.nuevos === 1 ? '' : 's'} nuevo${d.nuevos === 1 ? '' : 's'}` : 'Todo al día');
   }
 
-  function salir() {
-    borrarSesion();
-    setSesion(null);
-    setBloqueado(false);
-    setGastos([]);
-    setAjustes(false);
-    if (location.hash === '#demo') history.replaceState(null, '', location.pathname);
-  }
-
-  async function entrar(lista, cats) {
+  async function entrar(d) {
     setSesion(leerSesion());
-    actualizar(lista, cats);
-    // Ofrece Face ID una sola vez después del primer ingreso
+    aplicar(d);
     let preguntado = false;
     try { preguntado = Boolean(localStorage.getItem(K_PREGUNTADO)); } catch { /* nada */ }
-    if (!preguntado && !faceIdActivo() && await faceIdDisponible()) setOfrecerFaceId(true);
+    if (!preguntado && !faceIdActivo() && await faceIdDisponible()) setPanel('faceid');
   }
 
   async function responderFaceId(si) {
-    setOfrecerFaceId(false);
+    setPanel(null);
     try { localStorage.setItem(K_PREGUNTADO, '1'); } catch { /* nada */ }
     if (!si) return;
     try {
@@ -117,18 +154,37 @@ export default function App() {
 
   // Enlace directo a un gasto (desde una notificación): #gasto=<id>
   useEffect(() => {
-    if (bloqueado || !gastos.length) return;
+    if (bloqueado || !datos.usuario) return;
     const abrir = () => {
       const m = location.hash.match(/^#gasto=(.+)$/);
       if (!m) return;
-      const g = gastos.find((x) => x.id === decodeURIComponent(m[1]));
-      history.replaceState(null, '', location.pathname);
-      if (g) { setMes(g.fecha.slice(0, 7)); setEditando(g); }
+      const id = decodeURIComponent(m[1]);
+      history.replaceState(null, '', location.pathname + location.search);
+      const ambitos = [{ id: PERSONAL, movs: datos.personal.movimientos }, ...datos.grupos.map((g) => ({ id: g.id, movs: g.movimientos }))];
+      for (const a of ambitos) {
+        const g = a.movs.find((x) => x.id === id);
+        if (g) {
+          setAmbito(a.id);
+          setMes(g.fecha.slice(0, 7));
+          setEditando(g.id);
+          return;
+        }
+      }
     };
     abrir();
     window.addEventListener('hashchange', abrir);
-    return () => window.removeEventListener('hashchange', abrir);
-  }, [bloqueado, gastos]);
+    // La notificación con la app ya abierta llega como mensaje del service worker
+    const mensaje = (e) => {
+      if (e.data?.tipo !== 'abrir') return;
+      const hash = new URL(e.data.url).hash;
+      if (hash) { location.hash = hash; abrir(); }
+    };
+    navigator.serviceWorker?.addEventListener('message', mensaje);
+    return () => {
+      window.removeEventListener('hashchange', abrir);
+      navigator.serviceWorker?.removeEventListener('message', mensaje);
+    };
+  }, [bloqueado, datos]);  
 
   // Vuelve a bloquear con Face ID si la app estuvo en segundo plano un rato
   useEffect(() => {
@@ -141,65 +197,73 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', cambio);
   }, []);
 
-  async function elegirCategoria(categoria) {
-    const g = editando;
+  // ── Acciones sobre gastos ──
+
+  async function elegirCategoria(nombre) {
+    const g = gastos.find((x) => x.id === editando);
     setEditando(null);
-    if (!g || g.categoria === categoria) return;
-    const anterior = gastos;
-    actualizar(gastos.map((x) => (x.id === g.id ? { ...x, categoria } : x)));
-    try {
-      const d = await cambiarCategoria(g.id, categoria);
-      aplicar(d);
-      const otros = d.actualizados - 1;
-      mostrarAviso(otros > 0 ? `Listo. También moví ${otros} gasto${otros === 1 ? '' : 's'} más de ${nombreComercio(g.comercio)}` : `Movido a ${categoria}`);
-    } catch (e) {
-      actualizar(anterior);
-      if (e instanceof SesionVencida) return salir();
-      mostrarAviso('No se pudo guardar: ' + e.message, 'error');
-    }
+    if (!g || g.categoria === nombre) return;
+    const d = await hacer(() => cambiarCategoria(g.id, idDe(nombre)));
+    if (!d) return;
+    const otros = (d.actualizados || 1) - 1;
+    mostrarAviso(otros > 0 ? `Listo. También moví ${otros} gasto${otros === 1 ? '' : 's'} más de ${nombreComercio(g.comercio)}` : `Movido a ${nombre}`);
+  }
+
+  async function mover(g, grupoId) {
+    setEditando(null);
+    const destino = grupoId ? datos.grupos.find((x) => x.id === grupoId)?.nombre : 'tus gastos personales';
+    const d = await hacer(() => moverGasto(g.id, grupoId), { error: 'No se pudo mover' });
+    if (d) mostrarAviso(`Movido a ${destino}`, 'ok', { texto: 'Deshacer', fn: async () => { setAviso(null); await hacer(() => moverGasto(g.id, g.grupoId || null)); } });
   }
 
   async function eliminar(g) {
     setEditando(null);
-    const anterior = gastos;
-    setGastos(gastos.filter((x) => x.id !== g.id));
-    try {
-      aplicar(await eliminarGasto(g.id));
+    const d = await hacer(() => eliminarGasto(g.id), { error: 'No se pudo eliminar' });
+    if (d) {
       mostrarAviso('Gasto eliminado', 'ok', {
         texto: 'Deshacer',
         fn: async () => {
           setAviso(null);
-          try { aplicar(await restaurarGasto(g.id)); mostrarAviso('Gasto recuperado'); } catch (e) { mostrarAviso(e.message, 'error'); }
+          if (await hacer(() => restaurarGasto(g.id))) mostrarAviso('Gasto recuperado');
         },
       });
-    } catch (e) {
-      setGastos(anterior);
-      if (e instanceof SesionVencida) return salir();
-      mostrarAviso('No se pudo eliminar: ' + e.message, 'error');
     }
   }
 
-  async function guardarCat(anterior, datos) {
-    try {
-      aplicar(await guardarCategoria(anterior, datos));
-      if (filtro && filtro === anterior) setFiltro(datos.nombre);
-      mostrarAviso(anterior ? 'Categoría actualizada' : `Categoría “${datos.nombre}” creada`);
-    } catch (e) {
-      if (e instanceof SesionVencida) return salir();
-      throw e;
-    }
+  async function agregar(datosGasto) {
+    await hacer(() => crearGasto({ ...datosGasto, grupoId: grupo?.id || null }), { lanzar: true });
+    setPanel(null);
+    const m = claveMes(new Date(datosGasto.fecha));
+    setMes(m < MES_INICIO ? MES_INICIO : m);
+    mostrarAviso('Gasto agregado');
   }
 
-  async function borrarCat(nombre) {
-    try {
-      const d = await borrarCategoria(nombre);
-      aplicar(d);
-      if (filtro === nombre) setFiltro(null);
-      mostrarAviso(d.movidos ? `Borrada · ${d.movidos} gasto${d.movidos === 1 ? '' : 's'} quedaron por clasificar` : 'Categoría borrada');
-    } catch (e) {
-      if (e instanceof SesionVencida) return salir();
-      throw e;
+  // ── Categorías del ámbito ──
+  async function guardarCat(original, d) {
+    await hacer(() => (original.id ? editarCategoria(original.id, d) : crearCategoria(grupo?.id || null, d)), { lanzar: true });
+    if (filtro && filtro === original.nombre) setFiltro(d.nombre);
+    mostrarAviso(original.id ? 'Categoría actualizada' : `Categoría “${d.nombre}” creada`);
+  }
+
+  async function borrarCat(original) {
+    const d = await hacer(() => borrarCategoria(original.id), { lanzar: true });
+    if (filtro === original.nombre) setFiltro(null);
+    if (d) mostrarAviso(d.movidos ? `Borrada · ${d.movidos} gasto${d.movidos === 1 ? '' : 's'} quedaron por clasificar` : 'Categoría borrada');
+  }
+
+  // ── Grupos ──
+  async function guardarGrupo(d) {
+    if (panel === 'grupo-nuevo') {
+      const antes = new Set(datos.grupos.map((g) => g.id));
+      const r = await hacer(() => crearGrupo(d), { lanzar: true });
+      const nuevo = r?.grupos.find((g) => !antes.has(g.id));
+      if (nuevo) setAmbito(nuevo.id);
+      mostrarAviso(`Grupo “${d.nombre}” creado`);
+    } else {
+      await hacer(() => editarGrupo(grupo.id, d), { lanzar: true });
+      mostrarAviso('Grupo actualizado');
     }
+    setPanel(null);
   }
 
   // ── Cálculos del reporte ──
@@ -221,6 +285,11 @@ export default function App() {
       return { nombre: c.nombre, total: t, prev: tp, cantidad: delMes.filter((g) => g.categoria === c.nombre).length };
     }).filter((c) => c.total > 0).sort((a, b) => b.total - a.total);
 
+    // En grupos: cuánto puso cada quien
+    const porPersona = grupo
+      ? grupo.miembros.map((m) => ({ ...m, total: suma(delMes.filter((g) => g.usuarioId === m.id)) })).sort((a, b) => b.total - a.total)
+      : [];
+
     const movimientos = delMes
       .filter((g) => !filtro || g.categoria === filtro)
       .sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -232,8 +301,8 @@ export default function App() {
     });
 
     const pendientes = delMes.filter((g) => g.categoria === POR_CLASIFICAR);
-    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, dias, pendientes, cantidad: delMes.length, cantidadFiltro: movimientos.length };
-  }, [gastos, mes, filtro]);
+    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, porPersona, dias, pendientes, cantidad: delMes.length };
+  }, [gastos, mes, filtro, grupo]);  
 
   if (!conectado) {
     return <Acceso onEntrar={entrar} />;
@@ -247,6 +316,7 @@ export default function App() {
   const puedeAdelante = mes < mesMax;
   const cambio = reporte.totalPrev > 0 ? (reporte.total - reporte.totalPrev) / reporte.totalPrev : null;
   const totalFiltro = filtro ? reporte.porCat.find((c) => c.nombre === filtro)?.total || 0 : null;
+  const gastoEditando = editando ? gastos.find((g) => g.id === editando) : null;
 
   return (
     <div className="app">
@@ -259,11 +329,28 @@ export default function App() {
           <button className={'icono' + (cargando ? ' girando' : '')} onClick={refrescar} aria-label="Buscar gastos nuevos" title="Buscar gastos nuevos">
             <RefreshCw size={19} strokeWidth={2} />
           </button>
-          <button className="icono" onClick={() => setAjustes(true)} aria-label="Ajustes" title="Ajustes">
+          <button className="icono" onClick={() => setPanel('ajustes')} aria-label="Ajustes" title="Ajustes">
             <Settings size={19} strokeWidth={2} />
           </button>
         </div>
       </header>
+
+      <nav className="ambitos" aria-label="Personal o grupos">
+        <button className={'ambito' + (!grupo ? ' activo' : '')} onClick={() => setAmbito(PERSONAL)}>
+          <UserRound size={16} strokeWidth={2} /> Personal
+        </button>
+        {datos.grupos.map((g) => {
+          const I = iconoPorNombre(g.icono);
+          return (
+            <button key={g.id} className={'ambito' + (grupo?.id === g.id ? ' activo' : '')} style={{ '--c': g.color }} onClick={() => setAmbito(g.id)}>
+              <I size={16} strokeWidth={2} color={g.color} /> {g.nombre}
+            </button>
+          );
+        })}
+        <button className="ambito nuevo" onClick={() => setPanel('grupo-nuevo')} aria-label="Crear grupo">
+          <Plus size={16} strokeWidth={2.2} /> Grupo
+        </button>
+      </nav>
 
       <nav className="mes">
         <button className="icono" disabled={!puedeAtras} onClick={() => { setMes(moverMes(mes, -1)); setFiltro(null); }} aria-label="Mes anterior"><ChevronLeft size={22} /></button>
@@ -272,7 +359,7 @@ export default function App() {
       </nav>
 
       <section className="total tarjeta">
-        <p className="muted">Total gastado</p>
+        <p className="muted">{grupo ? `Gastado en ${grupo.nombre}` : 'Total gastado'}</p>
         <p className="total-num num">{colones(reporte.total)}</p>
         {cambio !== null ? (
           <p className={'cambio ' + (cambio > 0 ? 'sube' : 'baja')}>
@@ -284,6 +371,17 @@ export default function App() {
           </p>
         ) : (
           <p className="muted pequeno">{reporte.hayPrev ? `Sin gastos en ${nombreMes(reporte.prev, false).toLowerCase()} para comparar` : 'Primer mes registrado · el próximo mes verás la comparación'}</p>
+        )}
+        {grupo && reporte.total > 0 && (
+          <ul className="personas">
+            {reporte.porPersona.map((p) => (
+              <li key={p.id}>
+                <span className="avatar">{p.nombre.slice(0, 1)}</span>
+                <span className="persona-nombre">{p.id === yo ? 'Tú' : p.nombre}</span>
+                <span className="num">{colones(p.total)}</span>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
@@ -301,8 +399,10 @@ export default function App() {
       {reporte.cantidad === 0 ? (
         <section className="vacio tarjeta">
           <Sprout size={34} strokeWidth={1.6} color="var(--musgo)" />
-          <p>{cargando ? 'Buscando tus gastos…' : 'Todavía no hay gastos este mes.'}</p>
-          {!cargando && <button className="btn-sec" onClick={refrescar}>Buscar en el correo</button>}
+          <p>{cargando ? 'Buscando gastos…' : grupo ? 'Todavía no hay gastos en este grupo este mes.' : 'Todavía no hay gastos este mes.'}</p>
+          {!cargando && (grupo
+            ? <button className="btn-sec" onClick={() => setPanel('nuevo')}>Agregar un gasto</button>
+            : <button className="btn-sec" onClick={refrescar}>Buscar en el correo</button>)}
         </section>
       ) : (
         <>
@@ -354,20 +454,23 @@ export default function App() {
               <div key={d.dia} className="dia">
                 <p className="dia-tit">{etiquetaDia(d.dia)}</p>
                 <ul className="tarjeta lista-mov">
-                  {d.items.map((g) => {
-                    return (
-                      <li key={g.id}>
-                        <button className="mov" onClick={() => setEditando(g)}>
-                          <Badge categoria={g.categoria} />
-                          <span className="mov-txt">
-                            <span className="mov-nombre">{nombreComercio(g.comercio)}</span>
-                            <span className="pequeno muted">{g.banco}{g.tipo === 'SINPE' ? ' · SINPE' : ''} · {hora(g.fecha)}{g.categoria === POR_CLASIFICAR ? ' · toca para clasificar' : ''}</span>
+                  {d.items.map((g) => (
+                    <li key={g.id}>
+                      <button className="mov" onClick={() => setEditando(g.id)}>
+                        <Badge categoria={g.categoria} />
+                        <span className="mov-txt">
+                          <span className="mov-nombre">{nombreComercio(g.comercio)}</span>
+                          <span className="pequeno muted">
+                            {grupo ? (g.usuarioId === yo ? 'Tú' : g.quien) + ' · ' : ''}
+                            {g.banco ? `${g.banco}${g.tipo === 'SINPE' ? ' · SINPE' : ''} · ` : ''}
+                            {hora(g.fecha)}
+                            {g.categoria === POR_CLASIFICAR ? ' · toca para clasificar' : ''}
                           </span>
-                          <span className="num mov-monto">{colones(g.monto)}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
+                        </span>
+                        <span className="num mov-monto">{colones(g.monto)}</span>
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               </div>
             ))}
@@ -375,18 +478,48 @@ export default function App() {
         </>
       )}
 
-      {editando && <HojaCategoria gasto={editando} onElegir={elegirCategoria} onEliminar={eliminar} onCerrar={() => setEditando(null)} />}
-      {gestionCategorias && <Categorias onGuardar={guardarCat} onBorrar={borrarCat} onCerrar={() => setGestionCategorias(false)} />}
-      {ajustes && (
-        <Ajustes
-          sesion={sesion}
-          avisar={mostrarAviso}
-          onCerrar={() => setAjustes(false)}
-          onCategorias={() => { setAjustes(false); setGestionCategorias(true); }}
-          onCerrarSesion={async () => { await cerrarSesion(); salir(); }}
+      <button className="fab" onClick={() => setPanel('nuevo')} aria-label="Agregar gasto">
+        <Plus size={26} strokeWidth={2.4} />
+      </button>
+
+      {gastoEditando && (
+        <HojaCategoria
+          gasto={gastoEditando}
+          yo={yo}
+          grupos={datos.grupos}
+          enGrupo={Boolean(grupo)}
+          onElegir={elegirCategoria}
+          onMover={mover}
+          onEliminar={eliminar}
+          onCerrar={() => setEditando(null)}
         />
       )}
-      {ofrecerFaceId && (
+      {panel === 'nuevo' && <NuevoGasto ambitoNombre={grupo ? `el grupo ${grupo.nombre}` : 'tus gastos personales'} onGuardar={agregar} onCerrar={() => setPanel(null)} />}
+      {panel === 'categorias' && (
+        <Categorias titulo={grupo ? `Categorías · ${grupo.nombre}` : 'Categorías'} onGuardar={guardarCat} onBorrar={borrarCat} onCerrar={() => setPanel(null)} />
+      )}
+      {(panel === 'grupo-nuevo' || panel === 'grupo-editar') && (
+        <Grupo
+          grupo={panel === 'grupo-editar' ? grupo : null}
+          usuarios={datos.usuarios}
+          yo={yo}
+          onGuardar={guardarGrupo}
+          onCerrar={() => setPanel(null)}
+        />
+      )}
+      {panel === 'ajustes' && (
+        <Ajustes
+          sesion={sesion}
+          ambitoNombre={nombreAmbito}
+          grupo={grupo}
+          avisar={mostrarAviso}
+          onCerrar={() => setPanel(null)}
+          onCategorias={() => setPanel('categorias')}
+          onGrupo={() => setPanel('grupo-editar')}
+          onCerrarSesion={() => { cerrarSesion(); salir(); }}
+        />
+      )}
+      {panel === 'faceid' && (
         <div className="velo">
           <section className="hoja hoja-faceid" role="dialog" aria-label="Activar Face ID">
             <div className="hoja-asa" />

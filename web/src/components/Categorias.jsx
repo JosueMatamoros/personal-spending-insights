@@ -5,9 +5,9 @@ import { COLORES, ICONOS } from '../lib/iconos.js';
 
 /**
  * Lista de categorías para editarlas, agregar nuevas o borrarlas.
- * onGuardar(anterior, {nombre, icono, color}) y onBorrar(nombre) devuelven promesas.
+ * onGuardar(original, {nombre, icono, color}) y onBorrar(original) devuelven promesas.
  */
-export default function Categorias({ onGuardar, onBorrar, onCerrar }) {
+export default function Categorias({ titulo = 'Categorías', onGuardar, onBorrar, onCerrar }) {
   const [editando, setEditando] = useState(null); // null = lista · {} = nueva · {nombre…} = editar
 
   return (
@@ -18,15 +18,15 @@ export default function Categorias({ onGuardar, onBorrar, onCerrar }) {
           <Editor
             original={editando}
             onVolver={() => setEditando(null)}
-            onGuardar={async (datos) => { await onGuardar(editando.nombre || '', datos); setEditando(null); }}
-            onBorrar={async () => { await onBorrar(editando.nombre); setEditando(null); }}
+            onGuardar={async (datos) => { await onGuardar(editando, datos); setEditando(null); }}
+            onBorrar={async () => { await onBorrar(editando); setEditando(null); }}
           />
         ) : (
           <>
-            <h2 className="ajustes-tit">Categorías</h2>
+            <h2 className="ajustes-tit">{titulo}</h2>
             <ul className="lista-editar">
               {categorias().map((c) => (
-                <li key={c.nombre}>
+                <li key={c.id || c.nombre}>
                   <button className="fila-editar" onClick={() => setEditando(c)}>
                     <span className="badge" style={{ '--c': c.color }}><c.Icono size={20} strokeWidth={1.9} color={c.color} /></span>
                     <span className="fila-nombre">{c.nombre}</span>

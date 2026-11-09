@@ -30,7 +30,7 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_API_URL: https://script.google.com/macros/s/AKfycbymp6KQ9olkpfgFXquKRdk7mgCV2BRqBJh96lh5r0wCPeI3Tvcwt2tiiW3Lt-ZokoS_/exec
+          VITE_API_URL: https://naturetours-7geb.onrender.com/api/gastos
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist

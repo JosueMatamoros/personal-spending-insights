@@ -1,70 +1,58 @@
 # Mis Gastos 🌿
 
-App personal (PWA) que lee los avisos de compra de **BAC, BCR y Banco Popular** que llegan a
-Gmail, los guarda en una hoja de Google Sheets y muestra un reporte mensual en colones.
+App personal (PWA) de gastos: lee los avisos de **BAC, BCR y Banco Popular** (compras, SINPE y
+transferencias) desde Gmail y muestra un reporte mensual en colones. Tiene gastos **personales** y
+**grupos** compartidos (ej. "Tour a caballo") donde varios usuarios agregan gastos.
 
 ```
-Gmail ──(cada 15 min)──▶ Apps Script ──▶ Google Sheets ◀── App web (React PWA)
+Gmail ──(Apps Script, cada 15 min)──▶ Backend (Render, /api/gastos) ──▶ Postgres (Neon, esquema "gastos")
+                                                 ▲
+                                      App web (React PWA, GitHub Pages)
 ```
-
-## Carpetas
 
 | Carpeta | Qué es |
 |---|---|
-| `apps-script/Code.gs` | Lee los correos, clasifica y expone la API |
+| `apps-script/Code.gs` | Lector de Gmail: convierte cada aviso del banco en gasto y lo manda al backend |
 | `web/` | La app (React + Vite + PWA) |
 
-## 1. Instalar el Apps Script (una sola vez, en la cuenta de Gmail que recibe los avisos)
+El backend vive en el repo del negocio (`backend/gastos/`), en su propio esquema de Postgres.
 
-1. Entrar a <https://sheets.new> con la cuenta de Gmail que recibe los avisos y nombrar la hoja **Mis Gastos**.
-2. Menú **Extensiones → Apps Script**.
-3. Borrar el contenido de `Código.gs` y pegar todo `apps-script/Code.gs`. Guardar (💾).
-4. En **Configuración del proyecto** (⚙️), confirmar que la zona horaria es **(GMT-06:00) Costa Rica**.
-5. Arriba elegir la función **`configurar`** y presionar **Ejecutar**.
-   - Google pide permisos: *Revisar permisos → elegir la cuenta → Configuración avanzada → Ir a Mis Gastos (no seguro) → Permitir*.
-     (Dice "no seguro" solo porque es un script propio, no publicado.)
-   - En el **Registro de ejecución** aparece la **🔑 clave de acceso**. Anotarla.
-6. **Implementar → Nueva implementación → tipo "Aplicación web"**
-   - Ejecutar como: **Yo**
-   - Quién tiene acceso: **Cualquier usuario**
-   - Copiar la **URL** que termina en `/exec`.
+## Usuarios
 
-> La URL sola no da acceso: cada consulta exige la clave. Si se necesita ver la clave otra vez, ejecutar `verClave`.
-> Para probar la lectura sin guardar nada: ejecutar `probarLectura` y revisar el registro.
+- Se crean con `node scripts/gastos-crear-usuarios.mjs` (en el backend): cada uno recibe un **código de activación**.
+- En la app: *Primera vez u olvidé la contraseña* → código + cédula + contraseña nueva. Después se entra con cédula y contraseña.
+- Sesión de **1 mes**, bloqueo de 15 min tras 5 intentos, **Face ID** opcional en el celular.
+- Solo los usuarios con `lee_correo` reciben gastos del correo (por ahora, Josué). Los demás agregan a mano.
 
-## 2. Abrir la app
+## Grupos
 
-La primera vez se crea el acceso con la **clave de acceso del script**, la **cédula** y una **contraseña**
-(se guarda cifrada con sal en las propiedades del script). Después se entra con cédula + contraseña.
+- *+ Grupo* crea un grupo y elige quiénes están. Cada grupo tiene sus propias categorías y su reporte, con cuánto puso cada quien.
+- Un gasto personal se puede **mandar a un grupo** (sale de lo personal) y devolver.
+- El botón **+** agrega un gasto a mano en lo personal o en el grupo abierto.
 
-- La sesión dura **1 mes**. Tras 5 intentos fallidos el acceso se bloquea 15 minutos.
-- **Face ID** (WebAuthn) bloquea la app en el celular; se activa al entrar o en Ajustes ⚙️.
-- ¿Celular perdido? Ejecutar `cerrarTodasLasSesiones` en el editor de Apps Script.
-- ¿Contraseña olvidada? "Crear una nueva" con la clave de acceso del script.
+## Notificaciones
 
-Para instalarla en el celular:
-- **iPhone (Safari):** Compartir → *Agregar a pantalla de inicio*.
-- **Android (Chrome):** menú ⋮ → *Instalar app*.
+Ajustes ⚙️ → *Notificaciones*. En iPhone primero hay que agregar la app a la pantalla de inicio
+(Safari → Compartir → *Agregar a inicio*). Cada gasto nuevo llega como aviso; al tocarlo se abre para clasificarlo.
 
-Para ver un ejemplo sin conectar nada: abrir la app con `#demo` al final de la dirección.
+## Apps Script (lector de Gmail)
+
+1. En el proyecto de Apps Script pegar `apps-script/Code.gs`.
+2. ⚙️ Configuración del proyecto → **Propiedades del script**:
+   - `GASTOS_BACKEND_URL` = `https://<backend>.onrender.com/api/gastos`
+   - `GASTOS_INGEST_TOKEN` = la misma clave que `GASTOS_INGEST_TOKEN` en Render
+3. Ejecutar `migrarHojaAlBackend` (una vez, si había datos en la hoja de Google) y luego `configurar`.
+4. (Opcional, para el botón 🔄) Implementar como aplicación web y poner su URL en `GASTOS_SCRIPT_URL` en Render.
+
+`revisarCorreos` muestra en el registro qué correos de los bancos se convierten en gasto y cuáles no.
 
 ## Cómo clasifica
 
-1. **Reglas aprendidas** (hoja `Reglas`): cuando se cambia la categoría de un gasto en la app, el comercio
-   queda guardado y los próximos gastos de ese comercio caen solos en esa categoría.
-2. **Palabras clave** (`PALABRAS_CLAVE` en `Code.gs`): Automercado → Supermercado, Uber → Transporte, etc.
-3. Si nada coincide → queda **Por clasificar** hasta que se elija su categoría en la app.
+1. **Reglas aprendidas**: al cambiar la categoría de un gasto, los próximos de ese comercio caen solos ahí.
+2. **Palabras clave** (`backend/gastos/categorizar.js`): Automercado → Supermercado, Uber → Transporte, etc.
+3. Si nada coincide → **Por clasificar**.
 
-Las categorías se editan, agregan o borran desde **Ajustes → Categorías**. Un gasto se puede **eliminar**
-(tocándolo → *Eliminar gasto*); queda marcado en la hoja y el correo no lo vuelve a agregar.
-
-Los **SINPE / SINPE Móvil / transferencias enviadas** de los 3 bancos cuentan como gasto (los recibidos no) y se clasifican por la *Descripción* que se escribe al hacerlos (ej. "alquiler", "super", "uber").
-
-Notas:
-- Solo cuentan compras **aprobadas** (BCR) y de tipo **COMPRA** (BAC / Popular). Los SINPE solo si son débitos.
-- Cada gasto se identifica por su número de referencia, así nunca se duplica.
-- Compras en dólares se convierten con `TIPO_CAMBIO_USD` (₡505, ajustable en `Code.gs`).
-- Se cargan gastos desde el **1 de noviembre 2026** (`FECHA_INICIO`).
+Las categorías se editan en Ajustes → *Categorías*. Un gasto se puede **eliminar** (con *Deshacer*); el correo no lo vuelve a agregar.
 
 ## Desarrollo
 
@@ -72,7 +60,6 @@ Notas:
 cd web
 npm install
 npm run dev        # http://localhost:5173/#demo
-npm run build      # genera web/dist para publicar
 ```
 
-Opcional: crear `web/.env` con `VITE_API_URL=<url /exec>` para que la app solo pida la clave.
+`web/.env`: `VITE_API_URL=https://<backend>.onrender.com/api/gastos`

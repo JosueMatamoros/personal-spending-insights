@@ -270,3 +270,45 @@ h2 { font-size: 0.95rem; font-weight: 700; letter-spacing: -0.005em; }
 .editor-cat .error { margin-bottom: 10px; }
 .btn-primario:disabled { opacity: 0.5; }
 .aviso { width: max-content; }
+
+/* ── Personal / grupos ── */
+.ambitos { display: flex; gap: 8px; overflow-x: auto; margin: 6px -16px 0; padding: 4px 16px 2px; scrollbar-width: none; }
+.ambitos::-webkit-scrollbar { display: none; }
+.ambito {
+  flex: none; display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 99px;
+  background: var(--superficie); border: 1px solid var(--borde); color: var(--muted); font-weight: 600; font-size: 0.86rem; white-space: nowrap;
+}
+.ambito.activo { color: var(--texto); border-color: var(--c, var(--musgo)); background: color-mix(in srgb, var(--c, var(--musgo)) 14%, var(--superficie)); }
+.ambito.nuevo { border-style: dashed; color: var(--musgo); background: transparent; }
+
+.personas { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--borde); display: grid; gap: 10px; }
+.personas li { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+.persona-nombre { flex: 1; font-weight: 600; }
+.personas .num { font-weight: 700; }
+.avatar {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--musgo-suave); color: var(--musgo); font-weight: 800; font-size: 0.8rem;
+}
+.lista-editar .avatar { width: 40px; height: 40px; font-size: 0.95rem; }
+.check { width: 24px; height: 24px; border-radius: 8px; border: 2px solid var(--borde); display: grid; place-items: center; color: #0B0F0B; }
+.check.on { background: var(--musgo); border-color: var(--musgo); }
+
+/* ── Botón agregar ── */
+.app { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+.fab {
+  position: fixed; z-index: 15; right: max(18px, calc(50% - 260px + 18px)); bottom: calc(env(safe-area-inset-bottom) + 22px);
+  width: 58px; height: 58px; border-radius: 20px; display: grid; place-items: center; color: #0B0F0B;
+  background: linear-gradient(180deg, var(--musgo), var(--musgo-fuerte));
+  box-shadow: 0 14px 30px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+.fab:active { transform: scale(0.96); }
+
+/* ── Agregar gasto ── */
+.monto-campo { display: flex; align-items: center; gap: 6px; margin: 18px 0 12px; padding: 0 16px; height: 68px; border-radius: 18px; background: var(--superficie-2); border: 1px solid var(--borde); }
+.monto-campo span { font-size: 1.6rem; font-weight: 800; color: var(--muted); }
+.monto-campo input { flex: 1; min-width: 0; background: none; border: 0; color: var(--texto); font: inherit; font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.monto-campo input:focus, .campos input:focus { outline: none; }
+.monto-campo:focus-within { border-color: var(--musgo-fuerte); }
+.campos { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.campos input { min-width: 0; height: 50px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--borde); background: var(--superficie-2); color: var(--texto); font: inherit; font-size: 0.95rem; color-scheme: dark; }
+.campos input:focus { border-color: var(--musgo-fuerte); }

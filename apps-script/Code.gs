@@ -1,9 +1,14 @@
 /**
- * Mis Gastos — Apps Script
- * Lee los correos de BAC, BCR y Banco Popular, guarda cada gasto en la hoja
- * "Gastos" y expone una API JSON para la app web.
+ * Mis Gastos — Apps Script (lector de Gmail)
  *
- * Instalación: ver README.md (función `configurar` se ejecuta una sola vez).
+ * Lee los avisos de BAC, BCR y Banco Popular (compras con tarjeta, SINPE y
+ * transferencias enviadas) y se los manda al backend de Mis Gastos, que es
+ * quien los guarda (Postgres), los clasifica y avisa al celular.
+ *
+ * Configuración (una vez): ⚙️ Configuración del proyecto → Propiedades del script:
+ *   GASTOS_BACKEND_URL   = https://<backend>.onrender.com/api/gastos
+ *   GASTOS_INGEST_TOKEN  = (la misma clave que GASTOS_INGEST_TOKEN en Render)
+ * Luego ejecutar `configurar` (crea el disparador cada 15 min y envía todo).
  */
 
 // ───────────────────────── Configuración ─────────────────────────
@@ -11,29 +16,9 @@
 var FECHA_INICIO = '2026-11-01';      // Primer día que se carga
 var TIPO_CAMBIO_USD = 505;            // Si llega una compra en dólares, se convierte a ₡ con este valor
 
-// Gasto que el script no pudo clasificar: queda esperando a que ella lo clasifique.
-var POR_CLASIFICAR = '';
-
-var HOJA_GASTOS = 'Gastos';
-var HOJA_REGLAS = 'Reglas';
-var COLUMNAS = ['id', 'fecha', 'banco', 'tipo', 'comercio', 'monto', 'moneda', 'montoOriginal', 'categoria', 'manual', 'messageId', 'eliminado'];
-
-// Categorías iniciales. Desde la app se pueden editar, agregar y borrar (se guardan en CATEGORIAS_JSON).
-var CATEGORIAS_INICIALES = [
-  { nombre: 'Supermercado', icono: 'ShoppingCart', color: '#8FB573' },
-  { nombre: 'Comida y restaurantes', icono: 'UtensilsCrossed', color: '#E0A458' },
-  { nombre: 'Transporte', icono: 'Car', color: '#6FA8C9' },
-  { nombre: 'Servicios', icono: 'Lightbulb', color: '#CDBB5E' },
-  { nombre: 'Vivienda', icono: 'House', color: '#B98668' },
-  { nombre: 'Salud', icono: 'Pill', color: '#DE7F72' },
-  { nombre: 'Entretenimiento', icono: 'Clapperboard', color: '#5FB8A5' },
-  { nombre: 'Suscripciones', icono: 'Tv', color: '#8E9DDB' },
-  { nombre: 'Otros', icono: 'Shapes', color: '#9AA396' }
-];
-
 // Si cambia este número, la próxima sincronización vuelve a revisar todo desde FECHA_INICIO
-// (sin duplicar: cada gasto tiene su número de referencia).
-var VERSION_LECTURA = '2';
+// (sin duplicar: el backend ignora referencias que ya tiene).
+var VERSION_LECTURA = '3';
 
 // Dominios de los bancos: se lee cualquier remitente de estos dominios (no solo los de REMITENTES).
 var DOMINIOS_BANCOS = {
@@ -49,166 +34,110 @@ var REMITENTES = {
   'bpsinpe@bpdc.fi.cr': 'POPULAR_SINPE'
 };
 
-// Palabras clave por categoría. El orden importa: se revisa de arriba a abajo.
-// Se comparan como palabras completas, en mayúscula y sin tildes.
-var PALABRAS_CLAVE = [
-  ['Suscripciones', ['NETFLIX', 'SPOTIFY', 'DISNEY', 'DISNEYPLUS', 'HBO', 'HBO MAX', 'PRIME VIDEO', 'AMAZON PRIME', 'APPLE COM', 'APPLE COM BILL', 'ICLOUD',
-    'YOUTUBE', 'GOOGLE ONE', 'GOOGLE STORAGE', 'CHATGPT', 'OPENAI', 'ANTHROPIC', 'CLAUDE', 'CANVA', 'PARAMOUNT', 'CRUNCHYROLL', 'DUOLINGO',
-    'MICROSOFT', 'ADOBE', 'SUSCRIPCION', 'MEMBRESIA', 'STAR PLUS', 'DEEZER', 'TIDAL']],
-  ['Comida y restaurantes', ['TACO BELL', 'MCDONALDS', 'MC DONALDS', 'BURGER KING', 'KFC', 'PIZZA', 'PIZZERIA', 'SUBWAY', 'STARBUCKS', 'SPOON', 'POPS',
-    'CAFE', 'CAFETERIA', 'COFFEE', 'RESTAURANTE', 'RESTAURANT', 'REST', 'SODA', 'UBER EATS', 'UBEREATS', 'RAPPI', 'DIDI FOOD', 'PEDIDOSYA',
-    'PEDIDOS YA', 'WENDYS', 'CHURCHS', 'BAR', 'SUSHI', 'POLLO', 'POLLOS', 'BRASA', 'PANADERIA', 'REPOSTERIA', 'HELADOS', 'HELADERIA', 'BOSTON',
-    'DOMINOS', 'PAPA JOHNS', 'CHINESE', 'CHINO', 'TACOS', 'BURGER', 'BURGERS', 'GRILL', 'COMIDA', 'ALMUERZO', 'DESAYUNO', 'CENA', 'TAQUERIA',
-    'MARISQUERIA', 'CEVICHERA', 'CEVICHE', 'DINER', 'PIZZAHUT', 'PIZZA HUT', 'CAFE BRITT', 'BAGELMENS', 'ROOFTOP']],
-  ['Supermercado', ['AUTOMERCADO', 'AUTO MERCADO', 'WALMART', 'WAL MART', 'MAS X MENOS', 'MASXMENOS', 'PALI', 'MAXI PALI', 'MAXIPALI', 'PRICESMART',
-    'PRICE SMART', 'PERIMERCADOS', 'PERI', 'MEGASUPER', 'MEGA SUPER', 'FRESH MARKET', 'SUPER', 'MINI SUPER', 'MINISUPER', 'SUPERMERCADO',
-    'AMPM', 'AM PM', 'VINDI', 'CARNICERIA', 'VERDULERIA', 'FERIA', 'PULPERIA', 'ABASTECEDOR', 'MERCADO', 'LICORERA', 'COMPRAS SUPER', 'CONVENIENCE']],
-  ['Transporte', ['UBER', 'DIDI', 'INDRIVER', 'TAXI', 'GASOLINERA', 'SERVICENTRO', 'ESTACION DE SERVICIO', 'DELTA', 'PUMA', 'TEXACO', 'SHELL',
-    'GASOLINA', 'COMBUSTIBLE', 'PARQUEO', 'PARKING', 'PEAJE', 'QUICK PASS', 'QUICKPASS', 'COMPASS', 'GLOBALVIA', 'GLOBAL VIA', 'AUTOBUS', 'BUS', 'BUSES',
-    'RITEVE', 'MARCHAMO', 'TREN', 'INCOFER', 'LAVACAR', 'TALLER', 'LLANTAS', 'REPUESTOS']],
-  ['Servicios', ['ICE', 'KOLBI', 'LIBERTY', 'CLARO', 'CNFL', 'AYA', 'ESPH', 'JASEC', 'COOPELESCA', 'COOPEGUANACASTE', 'CABLETICA', 'TIGO',
-    'TELECABLE', 'AGUA', 'LUZ', 'ELECTRICIDAD', 'INTERNET', 'TELEFONO', 'CELULAR', 'RECARGA', 'MUNICIPALIDAD', 'CABLE']],
-  ['Vivienda', ['ALQUILER', 'RENTA', 'CONDOMINIO', 'EPA', 'CONSTRUPLAZA', 'EL LAGAR', 'LAGAR', 'FERRETERIA', 'MUEBLES', 'MUEBLERIA', 'COLCHONES',
-    'HOGAR', 'CASA', 'LIMPIEZA', 'CUOTA']],
-  ['Salud', ['FARMACIA', 'FARMACIAS', 'FISCHEL', 'SUCRE', 'LA BOMBA', 'FARMAVALUE', 'CLINICA', 'HOSPITAL', 'LABORATORIO', 'LABORATORIOS',
-    'MEDICO', 'MEDICA', 'DENTAL', 'DENTISTA', 'ODONTOLOGIA', 'OPTICA', 'CCSS', 'CITA', 'DOCTOR', 'DOCTORA', 'PSICOLOGO', 'PSICOLOGA',
-    'MEDICAMENTOS', 'SALUD', 'CIMA', 'HOSPITAL CLINICA BIBLICA', 'METROPOLITANO']],
-  ['Entretenimiento', ['CINEPOLIS', 'CINEMARK', 'CCM', 'NOVA CINEMAS', 'CINE', 'TEATRO', 'TICKET', 'TICKETS', 'ETICKET', 'BOLETERIA', 'CONCIERTO',
-    'STEAM', 'PLAYSTATION', 'XBOX', 'NINTENDO', 'BOLICHE', 'KARAOKE', 'MUSEO', 'PARQUE', 'DISCOTECA', 'EVENTO', 'ENTRADAS', 'ZOOLOGICO']]
-];
-
 // ───────────────────────── Instalación ─────────────────────────
 
-/** Ejecutar UNA vez desde el editor: crea las hojas, la clave de acceso (para crear la cuenta) y el disparador automático. */
+/** Ejecutar una vez: revisa la configuración, crea el disparador y envía todo desde FECHA_INICIO. */
 function configurar() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) throw new Error('Este script debe crearse desde la hoja de cálculo: Extensiones → Apps Script.');
-  var props = PropertiesService.getScriptProperties();
-  props.setProperty('SHEET_ID', ss.getId());
-
-  var hoja = ss.getSheetByName(HOJA_GASTOS) || ss.insertSheet(HOJA_GASTOS);
-  if (hoja.getLastRow() === 0) {
-    hoja.appendRow(COLUMNAS);
-    hoja.setFrozenRows(1);
-    hoja.getRange('B:B').setNumberFormat('yyyy-mm-dd hh:mm');
-    hoja.getRange('F:F').setNumberFormat('#,##0.00');
-  }
-  var reglas = ss.getSheetByName(HOJA_REGLAS) || ss.insertSheet(HOJA_REGLAS);
-  if (reglas.getLastRow() === 0) {
-    reglas.appendRow(['comercio', 'categoria']);
-    reglas.setFrozenRows(1);
-  }
-  var hoja1 = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
-  if (hoja1 && ss.getSheets().length > 2 && hoja1.getLastRow() === 0) ss.deleteSheet(hoja1);
-
-  if (!props.getProperty('APP_TOKEN')) {
-    props.setProperty('APP_TOKEN', generarClave_());
-  }
-
+  config_(); // falla con un mensaje claro si falta algo
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'sincronizar') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('sincronizar').timeBased().everyMinutes(15).create();
-
-  var resultado = sincronizar();
-  Logger.log('✅ Listo. Gastos nuevos cargados: ' + resultado.nuevos);
-  Logger.log('🔑 Clave de acceso para la app: ' + props.getProperty('APP_TOKEN'));
+  PropertiesService.getScriptProperties().deleteProperty('VERSION_LECTURA');
+  var r = sincronizar();
+  Logger.log('✅ Listo. Gastos nuevos enviados: ' + r.nuevos + ' (de ' + r.leidos + ' leídos). Se revisa el correo cada 15 minutos.');
 }
 
-/** Muestra la clave de acceso en el registro, por si se olvida. */
-function verClave() {
-  Logger.log('🔑 Clave de acceso: ' + PropertiesService.getScriptProperties().getProperty('APP_TOKEN'));
+function config_() {
+  var p = PropertiesService.getScriptProperties();
+  var url = (p.getProperty('GASTOS_BACKEND_URL') || '').replace(/\/+$/, '');
+  var token = p.getProperty('GASTOS_INGEST_TOKEN') || '';
+  if (!/^https:\/\//.test(url)) throw new Error('Falta la propiedad GASTOS_BACKEND_URL (https://…/api/gastos)');
+  if (token.length < 24) throw new Error('Falta la propiedad GASTOS_INGEST_TOKEN');
+  return { url: url, token: token };
 }
 
-function generarClave_() {
-  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  var s = '';
-  for (var i = 0; i < 8; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
-  return s;
+/** Manda gastos al backend. Devuelve cuántos eran nuevos. */
+function enviar_(gastos, extra) {
+  var c = config_();
+  var cuerpo = { correo: Session.getEffectiveUser().getEmail(), gastos: gastos };
+  Object.keys(extra || {}).forEach(function (k) { cuerpo[k] = extra[k]; });
+  var r = UrlFetchApp.fetch(c.url + '/ingesta', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-gastos-token': c.token },
+    payload: JSON.stringify(cuerpo),
+    muteHttpExceptions: true
+  });
+  var d = {};
+  try { d = JSON.parse(r.getContentText()); } catch (e) { /* respuesta no JSON */ }
+  if (r.getResponseCode() !== 200 || !d.ok) throw new Error('El backend respondió ' + r.getResponseCode() + ': ' + (d.error || r.getContentText().slice(0, 200)));
+  return d.nuevos || 0;
 }
 
 // ───────────────────────── Sincronización con Gmail ─────────────────────────
 
-/** Busca correos nuevos de los bancos y agrega los gastos a la hoja. */
+/** Busca correos nuevos de los bancos y los manda al backend. */
 function sincronizar() {
   var lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) return { nuevos: 0, ocupado: true };
+  if (!lock.tryLock(30000)) return { nuevos: 0, leidos: 0, ocupado: true };
   try {
-    var hoja = hojaGastos_();
     var props = PropertiesService.getScriptProperties();
     var inicio = parseISO_(FECHA_INICIO);
-    migrarPorClasificar_(hoja, props);
-
-    // Revisa desde 3 días antes de la última sincronización (por si algún correo llegó tarde).
-    var ultima = props.getProperty('ULTIMA_SYNC');
+    // Revisa desde 3 días antes de la última vez (por si algún correo llegó tarde)
+    var ultima = props.getProperty('ULTIMA_ENVIO');
     var desde = inicio;
-    var reescaneo = props.getProperty('VERSION_LECTURA') !== VERSION_LECTURA;
-    if (ultima && !reescaneo) {
+    if (ultima && props.getProperty('VERSION_LECTURA') === VERSION_LECTURA) {
       var d = new Date(Number(ultima) - 3 * 24 * 3600 * 1000);
       if (d > desde) desde = d;
     }
-
-    var existentes = idsExistentes_(hoja);
-    var reglas = leerReglas_();
     var remitentes = Object.keys(DOMINIOS_BANCOS).map(function (r) { return 'from:' + r; }).join(' OR ');
     var query = '(' + remitentes + ') after:' + Utilities.formatDate(new Date(desde.getTime() - 24 * 3600 * 1000), 'America/Costa_Rica', 'yyyy/MM/dd');
 
-    var filas = [];
+    var gastos = [];
+    var vistos = {};
     for (var start = 0; ; start += 100) {
       var hilos = GmailApp.search(query, start, 100);
-      if (!hilos.length) break;
       hilos.forEach(function (hilo) {
         hilo.getMessages().forEach(function (msg) {
           if (msg.getDate() < desde) return;
-          var gastos;
-          try {
-            gastos = leerCorreo_(msg);
-          } catch (e) {
-            Logger.log('No se pudo leer el correo ' + msg.getId() + ': ' + e);
-            return;
-          }
-          gastos.forEach(function (g) {
-            if (g.fecha < inicio || existentes[g.id]) return;
-            existentes[g.id] = true;
-            g.categoria = categorizar_(g.textoCategoria, reglas);
-            filas.push([g.id, g.fecha, g.banco, g.tipo, g.comercio, g.monto, g.moneda, g.montoOriginal, g.categoria, false, msg.getId(), false]);
+          var leidos;
+          try { leidos = leerCorreo_(msg); } catch (e) { Logger.log('No se pudo leer el correo ' + msg.getId() + ': ' + e); return; }
+          leidos.forEach(function (g) {
+            if (g.fecha < inicio || vistos[g.id]) return;
+            vistos[g.id] = true;
+            gastos.push(aEnvio_(g));
           });
         });
       });
       if (hilos.length < 100) break;
     }
 
-    if (filas.length) {
-      hoja.getRange(hoja.getLastRow() + 1, 1, filas.length, COLUMNAS.length).setValues(filas);
-    }
-    props.setProperty('ULTIMA_SYNC', String(Date.now()));
+    var nuevos = 0;
+    for (var i = 0; i < gastos.length; i += 200) nuevos += enviar_(gastos.slice(i, i + 200));
+    props.setProperty('ULTIMA_ENVIO', String(Date.now()));
     props.setProperty('VERSION_LECTURA', VERSION_LECTURA);
-    return { nuevos: filas.length };
+    return { nuevos: nuevos, leidos: gastos.length };
   } finally {
     lock.releaseLock();
   }
 }
 
-/** Una sola vez: lo que cayó solo en "Otros" o en "Compras" pasa a "Por clasificar". */
-function migrarPorClasificar_(hoja, props) {
-  if (props.getProperty('MIG_POR_CLASIFICAR')) return;
-  if (hoja.getLastRow() >= 2) {
-    var col = indices_();
-    var rango = hoja.getRange(2, 1, hoja.getLastRow() - 1, COLUMNAS.length);
-    var datos = rango.getValues();
-    var cambios = 0;
-    datos.forEach(function (r) {
-      var auto = r[col.manual] !== true;
-      if ((r[col.categoria] === 'Otros' && auto) || r[col.categoria] === 'Compras') {
-        r[col.categoria] = POR_CLASIFICAR;
-        r[col.manual] = false;
-        cambios++;
-      }
-    });
-    if (cambios) rango.setValues(datos);
-  }
-  props.setProperty('MIG_POR_CLASIFICAR', '1');
+function aEnvio_(g) {
+  return {
+    ref: g.id,
+    fecha: g.fecha.toISOString(),
+    banco: g.banco,
+    tipo: g.tipo,
+    comercio: g.comercio,
+    textoCategoria: String(g.textoCategoria || ''),
+    monto: Number(g.monto) || 0,
+    moneda: g.moneda,
+    montoOriginal: Number(g.montoOriginal) || 0
+  };
 }
+
+// ───────────────────────── Lectura de correos ─────────────────────────
 
 /** Devuelve una lista de gastos encontrados en un correo (normalmente uno). */
 function leerCorreo_(msg) {
@@ -450,467 +379,77 @@ function normalizar_(s) {
   return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 }
 
-// ───────────────────────── Categorías ─────────────────────────
+// ───────────────────────── Botón "buscar gastos" de la app ─────────────────────────
 
-function categorizar_(texto, reglas) {
-  var n = normalizar_(texto);
-  if (!n) return POR_CLASIFICAR;
-  var relleno = ' ' + n + ' ';
-  // 1) Reglas aprendidas (cuando ella cambia una categoría en la app)
-  for (var i = 0; i < reglas.length; i++) {
-    if (relleno.indexOf(' ' + reglas[i][0] + ' ') >= 0) {
-      var r = resolverCategoria_(reglas[i][1]);
-      if (r) return r;
-    }
-  }
-  // 2) Palabras clave por defecto
-  for (var c = 0; c < PALABRAS_CLAVE.length; c++) {
-    var palabras = PALABRAS_CLAVE[c][1];
-    for (var k = 0; k < palabras.length; k++) {
-      if (relleno.indexOf(' ' + palabras[k] + ' ') >= 0) {
-        var res = resolverCategoria_(PALABRAS_CLAVE[c][0]);
-        if (res) return res;
-        break;
-      }
-    }
-  }
-  return POR_CLASIFICAR;
-}
-
-function leerReglas_() {
-  var hoja = libro_().getSheetByName(HOJA_REGLAS);
-  if (!hoja || hoja.getLastRow() < 2) return [];
-  return hoja.getRange(2, 1, hoja.getLastRow() - 1, 2).getValues()
-    .filter(function (r) { return r[0] && r[1]; })
-    .map(function (r) { return [normalizar_(r[0]), String(r[1])]; })
-    // Las reglas más largas (más específicas) primero
-    .sort(function (a, b) { return b[0].length - a[0].length; });
-}
-
-/** Cambia la categoría de un gasto y aprende la regla para ese comercio. */
-function cambiarCategoria_(id, categoria) {
-  if (nombresCategorias_().indexOf(categoria) < 0) throw new Error('Categoría inválida');
-  var hoja = hojaGastos_();
-  var datos = hoja.getDataRange().getValues();
-  var col = indices_();
-  var comercio = null, tipo = null;
-  for (var i = 1; i < datos.length; i++) {
-    if (String(datos[i][col.id]) === id) {
-      hoja.getRange(i + 1, col.categoria + 1).setValue(categoria);
-      hoja.getRange(i + 1, col.manual + 1).setValue(true);
-      comercio = datos[i][col.comercio];
-      tipo = datos[i][col.tipo];
-      break;
-    }
-  }
-  if (comercio === null) throw new Error('Gasto no encontrado');
-
-  // Texto con el que se aprende la regla (para SINPE: la descripción)
-  var clave = tipo === 'SINPE' ? String(comercio).replace(/^SINPE\s*·\s*/, '') : comercio;
-  if (tipo === 'SINPE' && /sin descripci/i.test(comercio)) return { actualizados: 1 };
-  var claveN = normalizar_(clave);
-  if (!claveN) return { actualizados: 1 };
-
-  var reglas = libro_().getSheetByName(HOJA_REGLAS);
-  var filasReglas = reglas.getLastRow() > 1 ? reglas.getRange(2, 1, reglas.getLastRow() - 1, 2).getValues() : [];
-  var encontrada = false;
-  for (var r = 0; r < filasReglas.length; r++) {
-    if (normalizar_(filasReglas[r][0]) === claveN) {
-      reglas.getRange(r + 2, 2).setValue(categoria);
-      encontrada = true;
-      break;
-    }
-  }
-  if (!encontrada) reglas.appendRow([clave, categoria]);
-
-  // Aplica la regla a los demás gastos del mismo comercio que no se editaron a mano
-  var actualizados = 1;
-  for (var j = 1; j < datos.length; j++) {
-    if (String(datos[j][col.id]) === id || datos[j][col.manual] === true) continue;
-    var otra = datos[j][col.tipo] === 'SINPE' ? String(datos[j][col.comercio]).replace(/^SINPE\s*·\s*/, '') : datos[j][col.comercio];
-    if (normalizar_(otra) === claveN && datos[j][col.categoria] !== categoria) {
-      hoja.getRange(j + 1, col.categoria + 1).setValue(categoria);
-      actualizados++;
-    }
-  }
-  return { actualizados: actualizados };
-}
-
-// ───────────────────────── API para la app ─────────────────────────
-
-var DURACION_SESION_MS = 30 * 24 * 3600 * 1000;   // 1 mes
-var MAX_INTENTOS = 5;                              // intentos fallidos antes de bloquear
-var BLOQUEO_MS = 15 * 60 * 1000;                   // 15 minutos
-
-/** GET: solo para comprobar que el servicio está vivo (no devuelve datos). */
-function doGet() {
-  return responder_(function () {
-    return { ok: true, servicio: 'Mis Gastos', registrado: estaRegistrado_() };
-  });
-}
-
-/** POST: todas las acciones. El cuerpo es JSON con { action, ... }. */
+/** El backend llama aquí para revisar el correo en el momento. */
 function doPost(e) {
-  return responder_(function () {
-    var b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    switch (b.action) {
-      case 'estado':
-        return { ok: true, registrado: estaRegistrado_() };
-      case 'registrar':
-        return registrar_(b.clave, b.cedula, b.password);
-      case 'login':
-        return login_(b.cedula, b.password);
-    }
-
-    // Lo demás requiere sesión activa
-    validarSesion_(b.sesion);
-    switch (b.action) {
-      case 'gastos':
-        return datos_({});
-      case 'sync':
-        var r = sincronizar();
-        return datos_({ nuevos: r.nuevos });
-      case 'setCategory':
-        var res = cambiarCategoria_(String(b.id), String(b.categoria));
-        return datos_({ actualizados: res.actualizados });
-      case 'deleteExpense':
-        marcarEliminado_(String(b.id), true);
-        return datos_({});
-      case 'restoreExpense':
-        marcarEliminado_(String(b.id), false);
-        return datos_({});
-      case 'saveCategory':
-        guardarCategoria_(b.anterior ? String(b.anterior) : '', b.categoria || {});
-        return datos_({});
-      case 'deleteCategory':
-        var mov = borrarCategoria_(String(b.nombre));
-        return datos_({ movidos: mov });
-      case 'logout':
-        PropertiesService.getScriptProperties().deleteProperty('S_' + b.sesion);
-        return { ok: true };
-    }
-    throw new Error('Acción desconocida');
-  });
-}
-
-// ───────────────────────── Acceso (cédula + contraseña) ─────────────────────────
-
-function estaRegistrado_() {
-  return Boolean(PropertiesService.getScriptProperties().getProperty('AUTH_PASS'));
-}
-
-/** Crea (o cambia) la cédula y contraseña. Exige la clave de acceso del script. */
-function registrar_(clave, cedula, password) {
-  revisarBloqueo_();
-  try {
-    validarClave_(clave);
-  } catch (e) {
-    registrarFallo_();
-    throw new Error('La clave de acceso no es correcta');
-  }
-  cedula = limpiarCedula_(cedula);
-  if (cedula.length < 9) throw new Error('La cédula debe tener al menos 9 dígitos');
-  password = String(password || '');
-  if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres');
-  var props = PropertiesService.getScriptProperties();
-  var sal = Utilities.getUuid();
-  props.setProperties({
-    AUTH_SAL: sal,
-    AUTH_CEDULA: hash_(cedula, sal),
-    AUTH_PASS: hash_(password, sal)
-  });
-  borrarSesiones_();
-  return crearSesion_();
-}
-
-function login_(cedula, password) {
-  var props = PropertiesService.getScriptProperties();
-  if (!estaRegistrado_()) throw new Error('Todavía no se ha creado el acceso');
-
-  revisarBloqueo_();
-  var sal = props.getProperty('AUTH_SAL');
-  var ok = hash_(limpiarCedula_(cedula), sal) === props.getProperty('AUTH_CEDULA') &&
-           hash_(String(password || ''), sal) === props.getProperty('AUTH_PASS');
-  if (!ok) {
-    registrarFallo_();
-    throw new Error('Cédula o contraseña incorrecta');
-  }
-  props.deleteProperty('AUTH_INTENTOS');
-  props.deleteProperty('AUTH_BLOQUEO');
-  return crearSesion_();
-}
-
-function revisarBloqueo_() {
-  var bloqueo = Number(PropertiesService.getScriptProperties().getProperty('AUTH_BLOQUEO') || 0);
-  if (bloqueo > Date.now()) {
-    var min = Math.ceil((bloqueo - Date.now()) / 60000);
-    throw new Error('Demasiados intentos. Intenta de nuevo en ' + min + ' min.');
-  }
-}
-
-function registrarFallo_() {
-  var props = PropertiesService.getScriptProperties();
-  var intentos = Number(props.getProperty('AUTH_INTENTOS') || 0) + 1;
-  if (intentos >= MAX_INTENTOS) {
-    props.setProperty('AUTH_BLOQUEO', String(Date.now() + BLOQUEO_MS));
-    intentos = 0;
-  }
-  props.setProperty('AUTH_INTENTOS', String(intentos));
-}
-
-function crearSesion_() {
-  var props = PropertiesService.getScriptProperties();
-  limpiarSesionesVencidas_();
-  var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  var expira = Date.now() + DURACION_SESION_MS;
-  props.setProperty('S_' + token, String(expira));
-  return datos_({ sesion: token, expira: expira });
-}
-
-function validarSesion_(token) {
-  if (!token || !/^[a-f0-9]{64}$/.test(String(token))) throw new Error('Sesión vencida');
-  var expira = Number(PropertiesService.getScriptProperties().getProperty('S_' + token) || 0);
-  if (expira < Date.now()) throw new Error('Sesión vencida');
-}
-
-function limpiarSesionesVencidas_() {
-  var props = PropertiesService.getScriptProperties();
-  var todas = props.getProperties();
-  Object.keys(todas).forEach(function (k) {
-    if (k.indexOf('S_') === 0 && Number(todas[k]) < Date.now()) props.deleteProperty(k);
-  });
-}
-
-/** Cierra todas las sesiones abiertas (por ejemplo, si se pierde el celular). */
-function borrarSesiones_() {
-  var props = PropertiesService.getScriptProperties();
-  Object.keys(props.getProperties()).forEach(function (k) {
-    if (k.indexOf('S_') === 0) props.deleteProperty(k);
-  });
-}
-
-/** Ejecutar desde el editor para cerrar sesión en todos los dispositivos. */
-function cerrarTodasLasSesiones() {
-  borrarSesiones_();
-  Logger.log('✅ Se cerraron todas las sesiones.');
-}
-
-function limpiarCedula_(c) {
-  return String(c || '').replace(/\D/g, '');
-}
-
-/** SHA-256 repetido con sal: la contraseña nunca se guarda tal cual. */
-function hash_(texto, sal) {
-  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, sal + '|' + texto, Utilities.Charset.UTF_8);
-  for (var i = 0; i < 1500; i++) {
-    bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes.concat(Utilities.newBlob(sal).getBytes()));
-  }
-  return Utilities.base64Encode(bytes);
-}
-
-function responder_(fn) {
   var salida;
   try {
-    salida = fn();
+    var b = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    var token = PropertiesService.getScriptProperties().getProperty('GASTOS_INGEST_TOKEN') || '';
+    if (!token || b.token !== token) throw new Error('No autorizado');
+    if (b.action !== 'sync') throw new Error('Acción desconocida');
+    var r = sincronizar();
+    salida = { ok: true, nuevos: r.nuevos };
   } catch (err) {
     salida = { ok: false, error: String(err && err.message || err) };
   }
   return ContentService.createTextOutput(JSON.stringify(salida)).setMimeType(ContentService.MimeType.JSON);
 }
 
-function validarClave_(token) {
-  var clave = PropertiesService.getScriptProperties().getProperty('APP_TOKEN');
-  if (!clave || String(token || '').trim().toUpperCase() !== clave) throw new Error('Clave incorrecta');
+function doGet() {
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, servicio: 'Mis Gastos (lector de Gmail)' })).setMimeType(ContentService.MimeType.JSON);
 }
 
-function listarGastos_() {
-  var hoja = hojaGastos_();
-  if (hoja.getLastRow() < 2) return [];
-  var col = indices_();
-  var tz = 'America/Costa_Rica';
-  var nombres = nombresCategorias_();
-  return hoja.getRange(2, 1, hoja.getLastRow() - 1, COLUMNAS.length).getValues()
-    .filter(function (r) { return r[col.id] && r[col.eliminado] !== true; })
-    .map(function (r) {
-      var f = r[col.fecha] instanceof Date ? r[col.fecha] : new Date(r[col.fecha]);
-      return {
-        id: String(r[col.id]),
-        fecha: Utilities.formatDate(f, tz, "yyyy-MM-dd'T'HH:mm:ss"),
-        banco: r[col.banco],
-        tipo: r[col.tipo],
-        comercio: r[col.comercio],
-        monto: Number(r[col.monto]) || 0,
-        moneda: r[col.moneda],
-        montoOriginal: Number(r[col.montoOriginal]) || 0,
-        categoria: nombres.indexOf(r[col.categoria]) >= 0 ? r[col.categoria] : POR_CLASIFICAR
-      };
-    });
-}
-
-/** Respuesta estándar: gastos + categorías + lo que se agregue. */
-function datos_(extra) {
-  extra.ok = true;
-  extra.gastos = listarGastos_();
-  extra.categorias = categorias_();
-  return extra;
-}
-
-/** Elimina (o recupera) un gasto. Queda marcado para que el correo no lo vuelva a agregar. */
-function marcarEliminado_(id, eliminado) {
-  var hoja = hojaGastos_();
-  var col = indices_();
-  var ids = hoja.getRange(2, 1, Math.max(hoja.getLastRow() - 1, 1), 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]) === id) {
-      hoja.getRange(i + 2, col.eliminado + 1).setValue(eliminado);
-      return;
-    }
-  }
-  throw new Error('Gasto no encontrado');
-}
-
-// ───────────────────────── Categorías editables ─────────────────────────
-
-var ICONO_RE_ = /^[A-Za-z0-9]{2,40}$/;
-var COLOR_RE_ = /^#[0-9A-Fa-f]{6}$/;
-
-function categorias_() {
-  var json = PropertiesService.getScriptProperties().getProperty('CATEGORIAS_JSON');
-  try { if (json) return JSON.parse(json); } catch (e) { /* usa las iniciales */ }
-  return CATEGORIAS_INICIALES;
-}
-
-function nombresCategorias_() {
-  return categorias_().map(function (c) { return c.nombre; });
-}
-
-/** Las palabras clave usan los nombres iniciales; si se renombró o borró, sigue el cambio. */
-function resolverCategoria_(nombre) {
-  var alias = JSON.parse(PropertiesService.getScriptProperties().getProperty('ALIAS_CATEGORIAS') || '{}');
-  for (var i = 0; i < 10 && Object.prototype.hasOwnProperty.call(alias, nombre); i++) nombre = alias[nombre];
-  return nombresCategorias_().indexOf(nombre) >= 0 ? nombre : POR_CLASIFICAR;
-}
-
-function guardarAlias_(de, a) {
-  var props = PropertiesService.getScriptProperties();
-  var alias = JSON.parse(props.getProperty('ALIAS_CATEGORIAS') || '{}');
-  Object.keys(alias).forEach(function (k) { if (alias[k] === de) alias[k] = a; });
-  alias[de] = a;
-  delete alias[a];
-  props.setProperty('ALIAS_CATEGORIAS', JSON.stringify(alias));
-}
-
-/** Agrega una categoría nueva, o edita una existente (anterior = su nombre actual). */
-function guardarCategoria_(anterior, c) {
-  var nombre = String(c.nombre || '').replace(/\s+/g, ' ').trim();
-  if (!nombre) throw new Error('Escribe un nombre');
-  if (nombre.length > 30) throw new Error('El nombre es muy largo (máximo 30 letras)');
-  if (/^por clasificar$/i.test(nombre)) throw new Error('Ese nombre está reservado');
-  var icono = ICONO_RE_.test(String(c.icono)) ? String(c.icono) : 'Tag';
-  var color = COLOR_RE_.test(String(c.color)) ? String(c.color).toUpperCase() : '#9AA396';
-
-  var lista = categorias_().slice();
-  var repetida = lista.some(function (x) { return x.nombre.toLowerCase() === nombre.toLowerCase() && x.nombre !== anterior; });
-  if (repetida) throw new Error('Ya existe una categoría con ese nombre');
-
-  if (anterior) {
-    var i = lista.map(function (x) { return x.nombre; }).indexOf(anterior);
-    if (i < 0) throw new Error('Categoría no encontrada');
-    lista[i] = { nombre: nombre, icono: icono, color: color };
-    if (anterior !== nombre) {
-      reemplazarCategoriaEnHojas_(anterior, nombre);
-      guardarAlias_(anterior, nombre);
-    }
-  } else {
-    if (lista.length >= 30) throw new Error('Máximo 30 categorías');
-    lista.push({ nombre: nombre, icono: icono, color: color });
-  }
-  PropertiesService.getScriptProperties().setProperty('CATEGORIAS_JSON', JSON.stringify(lista));
-}
-
-/** Borra una categoría. Sus gastos vuelven a "Por clasificar". */
-function borrarCategoria_(nombre) {
-  var lista = categorias_().filter(function (x) { return x.nombre !== nombre; });
-  if (lista.length === categorias_().length) throw new Error('Categoría no encontrada');
-  if (!lista.length) throw new Error('Debe quedar al menos una categoría');
-  PropertiesService.getScriptProperties().setProperty('CATEGORIAS_JSON', JSON.stringify(lista));
-  guardarAlias_(nombre, POR_CLASIFICAR);
-  return reemplazarCategoriaEnHojas_(nombre, POR_CLASIFICAR);
-}
-
-function reemplazarCategoriaEnHojas_(de, a) {
-  var col = indices_();
-  var hoja = hojaGastos_();
-  var movidos = 0;
-  if (hoja.getLastRow() >= 2) {
-    var rango = hoja.getRange(2, 1, hoja.getLastRow() - 1, COLUMNAS.length);
-    var datos = rango.getValues();
-    datos.forEach(function (r) {
-      if (r[col.categoria] === de) {
-        r[col.categoria] = a;
-        if (a === POR_CLASIFICAR) r[col.manual] = false;
-        movidos++;
-      }
-    });
-    if (movidos) rango.setValues(datos);
-  }
-  var reglas = libro_().getSheetByName(HOJA_REGLAS);
-  if (reglas && reglas.getLastRow() >= 2) {
-    for (var f = reglas.getLastRow(); f >= 2; f--) {
-      if (reglas.getRange(f, 2).getValue() !== de) continue;
-      if (a === POR_CLASIFICAR) reglas.deleteRow(f);
-      else reglas.getRange(f, 2).setValue(a);
-    }
-  }
-  return movidos;
-}
-
-// ───────────────────────── Acceso a la hoja ─────────────────────────
-
-function libro_() {
-  var id = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
-}
-
-function hojaGastos_() {
-  var h = libro_().getSheetByName(HOJA_GASTOS);
-  if (!h) throw new Error('Falta ejecutar configurar()');
-  if (h.getRange(1, COLUMNAS.length).getValue() !== COLUMNAS[COLUMNAS.length - 1]) {
-    h.getRange(1, COLUMNAS.length).setValue(COLUMNAS[COLUMNAS.length - 1]);
-  }
-  return h;
-}
-
-function idsExistentes_(hoja) {
-  var set = {};
-  if (hoja.getLastRow() < 2) return set;
-  hoja.getRange(2, 1, hoja.getLastRow() - 1, 1).getValues().forEach(function (r) { set[String(r[0])] = true; });
-  return set;
-}
-
-function indices_() {
-  var o = {};
-  COLUMNAS.forEach(function (c, i) { o[c] = i; });
-  return o;
-}
-
-// ───────────────────────── Pruebas ─────────────────────────
+// ───────────────────────── Pasar lo de la hoja de Google al backend ─────────────────────────
 
 /**
- * Revisión completa: busca TODOS los correos de los 3 bancos desde FECHA_INICIO
- * (cualquier remitente de esos bancos) y muestra cuáles se registraron y cuáles no.
+ * Ejecutar UNA vez: manda al backend lo que ya estaba en la hoja "Gastos"
+ * (con la categoría que se le había puesto y los eliminados) y las reglas aprendidas.
  */
+function migrarHojaAlBackend() {
+  var id = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  var ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  var hoja = ss.getSheetByName('Gastos');
+  if (!hoja || hoja.getLastRow() < 2) { Logger.log('La hoja Gastos está vacía.'); return; }
+  var filas = hoja.getDataRange().getValues();
+  var cab = filas.shift();
+  var c = {};
+  cab.forEach(function (n, i) { c[n] = i; });
+  var gastos = filas.filter(function (r) { return r[c.id]; }).map(function (r) {
+    var f = r[c.fecha] instanceof Date ? r[c.fecha] : new Date(r[c.fecha]);
+    var cat = String(r[c.categoria] || '');
+    var g = {
+      ref: String(r[c.id]), fecha: f.toISOString(), banco: String(r[c.banco] || ''), tipo: String(r[c.tipo] || ''),
+      comercio: String(r[c.comercio] || '(sin nombre)'), monto: Number(r[c.monto]) || 0, moneda: String(r[c.moneda] || 'CRC'),
+      montoOriginal: Number(r[c.montoOriginal]) || 0, manual: r[c.manual] === true,
+      eliminado: c.eliminado !== undefined && r[c.eliminado] === true
+    };
+    g.textoCategoria = g.tipo === 'SINPE' ? g.comercio.replace(/^SINPE\s*·\s*/, '') : g.comercio;
+    if (cat && cat !== 'Compras') g.categoria = cat;
+    return g;
+  });
+  var reglasHoja = ss.getSheetByName('Reglas');
+  var reglas = reglasHoja && reglasHoja.getLastRow() > 1
+    ? reglasHoja.getRange(2, 1, reglasHoja.getLastRow() - 1, 2).getValues()
+        .filter(function (r) { return r[0] && r[1]; })
+        .map(function (r) { return { comercio: String(r[0]), categoria: String(r[1]) }; })
+    : [];
+  var nuevos = 0;
+  for (var i = 0; i < gastos.length; i += 200) {
+    nuevos += enviar_(gastos.slice(i, i + 200), i === 0 ? { reglas: reglas, avisar: false } : { avisar: false });
+  }
+  Logger.log('✅ Pasados al backend: ' + nuevos + ' gastos (de ' + gastos.length + ' en la hoja) y ' + reglas.length + ' reglas.');
+}
+
+// ───────────────────────── Revisión ─────────────────────────
+
+/** Muestra qué correos de los bancos se convierten en gasto y cuáles no (no envía nada). */
 function revisarCorreos() {
   var inicio = parseISO_(FECHA_INICIO);
-  var hoja = hojaGastos_();
-  var existentes = idsExistentes_(hoja);
-  var dominios = Object.keys(DOMINIOS_BANCOS);
-  var query = '(' + dominios.map(function (d) { return 'from:' + d; }).join(' OR ') + ') after:' +
+  var query = '(' + Object.keys(DOMINIOS_BANCOS).map(function (d) { return 'from:' + d; }).join(' OR ') + ') after:' +
     Utilities.formatDate(new Date(inicio.getTime() - 24 * 3600 * 1000), 'America/Costa_Rica', 'yyyy/MM/dd');
-
-  var resumen = {};
-  var noLeidos = [];
-  var total = 0, registrados = 0;
+  var resumen = {}, noLeidos = [], total = 0, gastosTot = 0;
   for (var start = 0; ; start += 100) {
     var hilos = GmailApp.search(query, start, 100);
     hilos.forEach(function (h) {
@@ -925,38 +464,22 @@ function revisarCorreos() {
         try { gastos = leerCorreo_(m); } catch (e) { /* se reporta abajo */ }
         if (gastos.length) {
           resumen[clave].gastos += gastos.length;
-          gastos.forEach(function (g) { if (existentes[g.id]) registrados++; });
+          gastosTot += gastos.length;
+          gastos.forEach(function (g) { Logger.log('   ' + g.banco + ' ' + g.tipo + ' · ' + g.comercio + ' · ₡' + g.monto); });
         } else {
-          noLeidos.push(Utilities.formatDate(m.getDate(), 'America/Costa_Rica', 'dd/MM HH:mm') + ' · ' + clave + ' · ' + m.getPlainBody().replace(/\s+/g, ' ').slice(0, 140));
+          noLeidos.push(Utilities.formatDate(m.getDate(), 'America/Costa_Rica', 'dd/MM HH:mm') + ' · ' + clave + ' · ' + m.getPlainBody().replace(/\s+/g, ' ').slice(0, 160));
         }
       });
     });
     if (hilos.length < 100) break;
   }
-
-  Logger.log('📬 Correos de bancos desde ' + FECHA_INICIO + ': ' + total + ' · gastos ya registrados: ' + registrados);
+  Logger.log('📬 Correos de bancos desde ' + FECHA_INICIO + ': ' + total + ' · gastos encontrados: ' + gastosTot);
   Object.keys(resumen).sort().forEach(function (k) {
-    Logger.log((resumen[k].gastos ? '✅ ' : '⚠️ ') + k + ' → ' + resumen[k].correos + ' correos, ' + resumen[k].gastos + ' gastos leídos');
+    Logger.log((resumen[k].gastos ? '✅ ' : '⚠️ ') + k + ' → ' + resumen[k].correos + ' correos, ' + resumen[k].gastos + ' gastos');
   });
   if (noLeidos.length) {
     Logger.log('— Correos que NO se convirtieron en gasto (' + noLeidos.length + '):');
     noLeidos.forEach(function (l) { Logger.log('   ' + l); });
-  } else {
-    Logger.log('🎉 Todos los correos de los bancos se leyeron.');
   }
 }
 
-
-/** Prueba la lectura con los últimos correos de cada banco, sin guardar nada. */
-function probarLectura() {
-  var reglas = leerReglas_();
-  Object.keys(REMITENTES).forEach(function (r) {
-    var hilos = GmailApp.search('from:' + r, 0, 3);
-    hilos.forEach(function (h) {
-      var msg = h.getMessages().pop();
-      leerCorreo_(msg).forEach(function (g) {
-        Logger.log([g.banco, g.tipo, g.fecha, g.comercio, '₡' + g.monto, categorizar_(g.textoCategoria, reglas)].join(' | '));
-      });
-    });
-  });
-}

@@ -34,3 +34,6 @@ export const cat = (nombre) => porNombre[nombre] || PENDIENTE;
 
 /** El servidor manda '' para los gastos sin clasificar. */
 export const normalizarCategoria = (c) => (porNombre[c] && c !== POR_CLASIFICAR ? c : POR_CLASIFICAR);
+
+/** id de una categoría del ámbito actual a partir de su nombre. */
+export const idDe = (nombre) => porNombre[nombre]?.id || null;

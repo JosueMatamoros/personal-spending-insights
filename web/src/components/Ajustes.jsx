@@ -1,15 +1,31 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { activarPush, desactivarPush, iphoneSinInstalar, pushActivo, pushSoportado } from '../lib/push.js';
 import { activarFaceId, desactivarFaceId, faceIdActivo, faceIdDisponible } from '../lib/faceid.js';
 
 const fecha = (ms) => new Date(ms).toLocaleDateString('es-CR', { day: 'numeric', month: 'long', year: 'numeric' });
 
-export default function Ajustes({ sesion, onCerrarSesion, onCerrar, onCategorias, avisar }) {
+export default function Ajustes({ sesion, ambitoNombre, grupo, onCerrarSesion, onCerrar, onCategorias, onGrupo, avisar }) {
   const [disponible, setDisponible] = useState(false);
   const [activo, setActivo] = useState(faceIdActivo);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
 
-  useEffect(() => { faceIdDisponible().then(setDisponible); }, []);
+  const [notif, setNotif] = useState(false);
+  const [notifOcupado, setNotifOcupado] = useState(false);
+
+  useEffect(() => { faceIdDisponible().then(setDisponible); pushActivo().then(setNotif).catch(() => {}); }, []);
+
+  async function alternarNotif() {
+    setNotifOcupado(true);
+    try {
+      if (notif) { await desactivarPush(); setNotif(false); avisar('Notificaciones desactivadas'); }
+      else { await activarPush(); setNotif(true); avisar('Listo: te aviso cada gasto nuevo'); }
+    } catch (e) {
+      avisar(e.message, 'error');
+    } finally {
+      setNotifOcupado(false);
+    }
+  }
 
   async function alternarFaceId() {
     if (activo) {
@@ -35,11 +51,35 @@ export default function Ajustes({ sesion, onCerrarSesion, onCerrar, onCategorias
 
         <button className="ajuste ajuste-btn" onClick={onCategorias}>
           <div>
-            <p className="ajuste-nombre">Categorías</p>
+            <p className="ajuste-nombre">Categorías{grupo ? ` de ${ambitoNombre}` : ''}</p>
             <p className="muted pequeno">Editar, agregar o borrar categorías</p>
           </div>
           <ChevronRight size={20} color="var(--muted)" />
         </button>
+
+        {grupo && (
+          <button className="ajuste ajuste-btn" onClick={onGrupo}>
+            <div>
+              <p className="ajuste-nombre">Grupo {grupo.nombre}</p>
+              <p className="muted pequeno">{grupo.miembros.map((m) => m.nombre).join(', ')} · editar nombre y miembros</p>
+            </div>
+            <ChevronRight size={20} color="var(--muted)" />
+          </button>
+        )}
+
+        <div className="ajuste">
+          <div>
+            <p className="ajuste-nombre">Notificaciones</p>
+            <p className="muted pequeno">
+              {pushSoportado() ? 'Aviso de cada gasto nuevo; tócalo para clasificarlo.'
+                : iphoneSinInstalar() ? 'Primero agrega la app a la pantalla de inicio (Compartir → Agregar a inicio).'
+                : 'Este navegador no permite notificaciones.'}
+            </p>
+          </div>
+          <button role="switch" aria-checked={notif} className={'switch' + (notif ? ' on' : '')} disabled={notifOcupado || (!pushSoportado() && !notif)} onClick={alternarNotif}>
+            <span />
+          </button>
+        </div>
 
         <div className="ajuste">
           <div>
