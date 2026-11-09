@@ -53,9 +53,12 @@ Para ver un ejemplo sin conectar nada: abrir la app con `#demo` al final de la d
 1. **Reglas aprendidas** (hoja `Reglas`): cuando se cambia la categoría de un gasto en la app, el comercio
    queda guardado y los próximos gastos de ese comercio caen solos en esa categoría.
 2. **Palabras clave** (`PALABRAS_CLAVE` en `Code.gs`): Automercado → Supermercado, Uber → Transporte, etc.
-3. Si nada coincide → **Otros**.
+3. Si nada coincide → queda **Por clasificar** hasta que se elija su categoría en la app.
 
-Los **SINPE** se clasifican por la *Descripción* que se escribe al hacerlos (ej. "alquiler", "super", "uber").
+Las categorías se editan, agregan o borran desde **Ajustes → Categorías**. Un gasto se puede **eliminar**
+(tocándolo → *Eliminar gasto*); queda marcado en la hoja y el correo no lo vuelve a agregar.
+
+Los **SINPE / SINPE Móvil / transferencias enviadas** de los 3 bancos cuentan como gasto (los recibidos no) y se clasifican por la *Descripción* que se escribe al hacerlos (ej. "alquiler", "super", "uber").
 
 Notas:
 - Solo cuentan compras **aprobadas** (BCR) y de tipo **COMPRA** (BAC / Popular). Los SINPE solo si son débitos.
