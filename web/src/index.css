@@ -310,5 +310,10 @@ h2 { font-size: 0.95rem; font-weight: 700; letter-spacing: -0.005em; }
 .monto-campo input:focus, .campos input:focus { outline: none; }
 .monto-campo:focus-within { border-color: var(--musgo-fuerte); }
 .campos { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-.campos input { min-width: 0; height: 50px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--borde); background: var(--superficie-2); color: var(--texto); font: inherit; font-size: 0.95rem; color-scheme: dark; }
+.campos input { min-width: 0; height: 50px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--borde); background: var(--superficie-2); color: var(--texto); font: inherit; font-size: 16px; color-scheme: dark; }
 .campos input:focus { border-color: var(--musgo-fuerte); }
+
+/* iPhone hace zoom al enfocar campos con letra < 16px: todos los campos a 16px o más */
+input, select, textarea { font-size: max(16px, 1em); }
+.campos input, .config-form input, .editor-nombre input { font-size: 16px; }
+.monto-campo input { font-size: 2rem; }

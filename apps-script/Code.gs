@@ -18,7 +18,10 @@ var TIPO_CAMBIO_USD = 505;            // Si llega una compra en dólares, se con
 
 // Si cambia este número, la próxima sincronización vuelve a revisar todo desde FECHA_INICIO
 // (sin duplicar: el backend ignora referencias que ya tiene).
-var VERSION_LECTURA = '3';
+var VERSION_LECTURA = '4';
+
+// Bancos de los que un SINPE / transferencia enviada cuenta como gasto.
+var SINPE_DE = ['BAC'];
 
 // Dominios de los bancos: se lee cualquier remitente de estos dominios (no solo los de REMITENTES).
 var DOMINIOS_BANCOS = {
@@ -150,9 +153,9 @@ function leerCorreo_(msg) {
   var gastos = [];
   if (banco === 'BCR') gastos = leerBCR_(texto, msg);
   else if (banco === 'BAC' || banco === 'POPULAR') gastos = leerEtiquetas_(texto, msg, nombre);
-  else if (banco === 'POPULAR_SINPE') gastos = leerSinpe_(texto, msg);
-  // Si no fue una compra con tarjeta, revisa si es un SINPE / transferencia enviada
-  if (!gastos.length) gastos = leerTransferencia_(texto, msg, nombre);
+  // SINPE / transferencias: solo cuentan los de BAC. Los de BCR y Popular son
+  // movimientos entre cuentas propias (no son gastos).
+  if (!gastos.length && SINPE_DE.indexOf(banco) >= 0) gastos = leerTransferencia_(texto, msg, nombre);
   return gastos;
 }
 
@@ -483,3 +486,20 @@ function revisarCorreos() {
   }
 }
 
+
+/** Muestra el texto completo de los últimos correos de SINPE de BAC (números de cuenta tapados). */
+function verSinpeBAC() {
+  var hilos = GmailApp.search('from:(baccredomatic.cr OR baccredomatic.com OR credomatic.com) SINPE after:' +
+    FECHA_INICIO.replace(/-/g, '/'), 0, 3);
+  if (!hilos.length) { Logger.log('No encontré correos de SINPE de BAC desde ' + FECHA_INICIO); return; }
+  hilos.forEach(function (h) {
+    var m = h.getMessages().pop();
+    var texto = htmlATexto_(m.getBody() || m.getPlainBody())
+      .replace(/(CR\d{2})\d{12,}(\d{4})/g, '$1••••$2')   // IBAN
+      .replace(/\b\d{8,}(\d{4})\b/g, '••••$1');           // cuentas / tarjetas largas
+    var leidos = leerCorreo_(m);
+    Logger.log('━━━ ' + m.getFrom() + ' · ' + m.getSubject() + ' · ' + m.getDate() +
+      '\n¿Se convierte en gasto? ' + (leidos.length ? 'SÍ → ' + leidos[0].comercio + ' ₡' + leidos[0].monto : 'NO') +
+      '\n' + texto.slice(0, 1500));
+  });
+}

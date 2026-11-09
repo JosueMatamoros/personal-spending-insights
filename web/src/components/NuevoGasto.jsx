@@ -19,7 +19,7 @@ export default function NuevoGasto({ ambitoNombre, onGuardar, onCerrar }) {
     e.preventDefault();
     const n = Number(String(monto).replace(/[^\d.]/g, ''));
     if (!n) return setError('Escribe el monto');
-    if (!comercio.trim()) return setError('Escribe en qué fue el gasto');
+    if (!comercio.trim()) return setError('Escribe una descripción');
     setGuardando(true);
     setError('');
     try {
@@ -45,7 +45,7 @@ export default function NuevoGasto({ ambitoNombre, onGuardar, onCerrar }) {
           <input value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ','))} inputMode="numeric" placeholder="0" aria-label="Monto" autoFocus />
         </div>
         <div className="campos">
-          <input value={comercio} onChange={(e) => setComercio(e.target.value)} placeholder="¿En qué fue? (ej. Heno, Gasolina)" aria-label="Descripción" maxLength={120} />
+          <input value={comercio} onChange={(e) => setComercio(e.target.value)} placeholder="Descripción" aria-label="Descripción" maxLength={120} />
           <input type="date" value={fecha} min="2026-11-01" max={hoy()} onChange={(e) => setFecha(e.target.value)} aria-label="Fecha" />
         </div>
 
