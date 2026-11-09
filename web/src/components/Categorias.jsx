@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { categorias } from '../lib/categorias.js';
 import { COLORES, ICONOS } from '../lib/iconos.js';
 
@@ -9,6 +9,15 @@ import { COLORES, ICONOS } from '../lib/iconos.js';
  */
 export default function Categorias({ titulo = 'Categorías', onGuardar, onBorrar, onCerrar }) {
   const [editando, setEditando] = useState(null); // null = lista · {} = nueva · {nombre…} = editar
+  const [borrando, setBorrando] = useState(null);  // categoría que se está por borrar
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState('');
+
+  async function borrar(c) {
+    setOcupado(true);
+    setError('');
+    try { await onBorrar(c); setBorrando(null); } catch (e) { setError(e.message); } finally { setOcupado(false); }
+  }
 
   return (
     <div className="velo" onClick={onCerrar}>
@@ -27,14 +36,30 @@ export default function Categorias({ titulo = 'Categorías', onGuardar, onBorrar
             <ul className="lista-editar">
               {categorias().map((c) => (
                 <li key={c.id || c.nombre}>
-                  <button className="fila-editar" onClick={() => setEditando(c)}>
-                    <span className="badge" style={{ '--c': c.color }}><c.Icono size={20} strokeWidth={1.9} color={c.color} /></span>
-                    <span className="fila-nombre">{c.nombre}</span>
-                    <ChevronRight size={18} color="var(--muted)" />
-                  </button>
+                  {borrando?.nombre === c.nombre ? (
+                    <div className="fila-borrar">
+                      <span>¿Borrar <strong>{c.nombre}</strong>? Sus gastos quedan por clasificar.</span>
+                      <div className="confirmar-btns">
+                        <button className="btn-sec" onClick={() => setBorrando(null)}>Cancelar</button>
+                        <button className="btn-peligro" disabled={ocupado} onClick={() => borrar(c)}>{ocupado ? 'Borrando…' : 'Borrar'}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="fila-cat-edit">
+                      <button className="fila-editar" onClick={() => setEditando(c)}>
+                        <span className="badge" style={{ '--c': c.color }}><c.Icono size={20} strokeWidth={1.9} color={c.color} /></span>
+                        <span className="fila-nombre">{c.nombre}</span>
+                        <ChevronRight size={18} color="var(--muted)" />
+                      </button>
+                      <button className="icono borrar-cat" onClick={() => { setBorrando(c); setError(''); }} aria-label={'Borrar ' + c.nombre}>
+                        <Trash2 size={18} strokeWidth={2} />
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
+            {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
             <button className="btn-sec btn-ancho" onClick={() => setEditando({})}>
               <Plus size={18} strokeWidth={2.2} /> Nueva categoría
             </button>

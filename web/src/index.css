@@ -317,3 +317,10 @@ h2 { font-size: 0.95rem; font-weight: 700; letter-spacing: -0.005em; }
 input, select, textarea { font-size: max(16px, 1em); }
 .campos input, .config-form input, .editor-nombre input { font-size: 16px; }
 .monto-campo input { font-size: 2rem; }
+
+/* ── Borrar categoría desde la lista ── */
+.fila-cat-edit { display: flex; align-items: center; gap: 4px; }
+.fila-cat-edit .fila-editar { flex: 1; min-width: 0; }
+.borrar-cat { color: var(--sube); flex: none; }
+.fila-borrar { padding: 12px 2px; display: grid; gap: 12px; font-size: 0.9rem; }
+.fila-borrar .confirmar-btns { margin-top: 0; }
