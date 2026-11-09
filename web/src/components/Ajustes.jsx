@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { activarFaceId, desactivarFaceId, faceIdActivo, faceIdDisponible } from '../lib/faceid.js';
 
 const fecha = (ms) => new Date(ms).toLocaleDateString('es-CR', { day: 'numeric', month: 'long', year: 'numeric' });
 
-export default function Ajustes({ sesion, onCerrarSesion, onCerrar, avisar }) {
+export default function Ajustes({ sesion, onCerrarSesion, onCerrar, onCategorias, avisar }) {
   const [disponible, setDisponible] = useState(false);
   const [activo, setActivo] = useState(faceIdActivo);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
@@ -31,6 +32,14 @@ export default function Ajustes({ sesion, onCerrarSesion, onCerrar, avisar }) {
       <section className="hoja" role="dialog" aria-label="Ajustes" onClick={(e) => e.stopPropagation()}>
         <div className="hoja-asa" />
         <h2 className="ajustes-tit">Ajustes</h2>
+
+        <button className="ajuste ajuste-btn" onClick={onCategorias}>
+          <div>
+            <p className="ajuste-nombre">Categorías</p>
+            <p className="muted pequeno">Editar, agregar o borrar categorías</p>
+          </div>
+          <ChevronRight size={20} color="var(--muted)" />
+        </button>
 
         <div className="ajuste">
           <div>

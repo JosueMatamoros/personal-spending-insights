@@ -1,0 +1,110 @@
+import { useState } from 'react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { categorias } from '../lib/categorias.js';
+import { COLORES, ICONOS } from '../lib/iconos.js';
+
+/**
+ * Lista de categorías para editarlas, agregar nuevas o borrarlas.
+ * onGuardar(anterior, {nombre, icono, color}) y onBorrar(nombre) devuelven promesas.
+ */
+export default function Categorias({ onGuardar, onBorrar, onCerrar }) {
+  const [editando, setEditando] = useState(null); // null = lista · {} = nueva · {nombre…} = editar
+
+  return (
+    <div className="velo" onClick={onCerrar}>
+      <section className="hoja hoja-alta" role="dialog" aria-label="Categorías" onClick={(e) => e.stopPropagation()}>
+        <div className="hoja-asa" />
+        {editando ? (
+          <Editor
+            original={editando}
+            onVolver={() => setEditando(null)}
+            onGuardar={async (datos) => { await onGuardar(editando.nombre || '', datos); setEditando(null); }}
+            onBorrar={async () => { await onBorrar(editando.nombre); setEditando(null); }}
+          />
+        ) : (
+          <>
+            <h2 className="ajustes-tit">Categorías</h2>
+            <ul className="lista-editar">
+              {categorias().map((c) => (
+                <li key={c.nombre}>
+                  <button className="fila-editar" onClick={() => setEditando(c)}>
+                    <span className="badge" style={{ '--c': c.color }}><c.Icono size={20} strokeWidth={1.9} color={c.color} /></span>
+                    <span className="fila-nombre">{c.nombre}</span>
+                    <ChevronRight size={18} color="var(--muted)" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button className="btn-sec btn-ancho" onClick={() => setEditando({})}>
+              <Plus size={18} strokeWidth={2.2} /> Nueva categoría
+            </button>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Editor({ original, onVolver, onGuardar, onBorrar }) {
+  const nueva = !original.nombre;
+  const [nombre, setNombre] = useState(original.nombre || '');
+  const [icono, setIcono] = useState(original.icono || 'Tag');
+  const [color, setColor] = useState(original.color || COLORES[0]);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmar, setConfirmar] = useState(false);
+  const Icono = ICONOS[icono] || ICONOS.Tag;
+
+  async function hacer(fn) {
+    setGuardando(true);
+    setError('');
+    try { await fn(); } catch (e) { setError(e.message); setGuardando(false); }
+  }
+
+  return (
+    <div className="editor-cat">
+      <div className="editor-cab">
+        <button className="icono" onClick={onVolver} aria-label="Volver"><ChevronLeft size={22} /></button>
+        <h2>{nueva ? 'Nueva categoría' : 'Editar categoría'}</h2>
+      </div>
+
+      <div className="editor-nombre">
+        <span className="badge grande" style={{ '--c': color }}><Icono size={24} strokeWidth={1.9} color={color} /></span>
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre (ej. Mascotas)" maxLength={30} autoFocus={nueva} />
+      </div>
+
+      <p className="hoja-tit">Color</p>
+      <div className="colores">
+        {COLORES.map((c) => (
+          <button key={c} className={'color' + (c === color ? ' activo' : '')} style={{ '--c': c }} onClick={() => setColor(c)} aria-label={'Color ' + c} />
+        ))}
+      </div>
+
+      <p className="hoja-tit">Ícono</p>
+      <div className="iconos">
+        {Object.entries(ICONOS).map(([n, I]) => (
+          <button key={n} className={'icono-op' + (n === icono ? ' activo' : '')} style={{ '--c': color }} onClick={() => setIcono(n)} aria-label={n}>
+            <I size={20} strokeWidth={1.9} />
+          </button>
+        ))}
+      </div>
+
+      {error && <p className="error">{error}</p>}
+      <button className="btn-primario btn-ancho" disabled={guardando || !nombre.trim()} onClick={() => hacer(() => onGuardar({ nombre: nombre.trim(), icono, color }))}>
+        {guardando ? 'Guardando…' : 'Guardar'}
+      </button>
+
+      {!nueva && (confirmar ? (
+        <div className="confirmar">
+          <p>¿Borrar “{original.nombre}”? Sus gastos van a quedar <strong>por clasificar</strong>.</p>
+          <div className="confirmar-btns">
+            <button className="btn-sec" onClick={() => setConfirmar(false)}>Cancelar</button>
+            <button className="btn-peligro" disabled={guardando} onClick={() => hacer(onBorrar)}>Borrar</button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn-eliminar" onClick={() => setConfirmar(true)}>Borrar categoría</button>
+      ))}
+    </div>
+  );
+}

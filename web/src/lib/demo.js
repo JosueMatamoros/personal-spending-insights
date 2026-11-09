@@ -1,3 +1,5 @@
+import { CATEGORIAS_INICIALES } from './categorias.js';
+
 // Datos de ejemplo para ver la app sin conectarla a Gmail.
 const base = [
   ['2026-10-03T12:10', 'BAC', 'Tarjeta', 'Automercado Escazu', 32450, 'Supermercado'],
@@ -24,10 +26,36 @@ let gastos = base.map(([fecha, banco, tipo, comercio, monto, categoria], i) => (
   id: 'demo-' + i, fecha: fecha + ':00', banco, tipo, comercio, monto, moneda: 'CRC', montoOriginal: monto, categoria,
 }));
 
+let categorias = CATEGORIAS_INICIALES.map((c) => ({ ...c }));
+const eliminados = new Set();
+
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+const respuesta = (extra = {}) => ({ ok: true, ...extra, gastos: gastos.filter((g) => !eliminados.has(g.id)), categorias });
+
+function guardarCategoria({ anterior, categoria }) {
+  const nombre = String(categoria.nombre || '').trim();
+  if (!nombre) throw new Error('Escribe un nombre');
+  if (categorias.some((c) => c.nombre.toLowerCase() === nombre.toLowerCase() && c.nombre !== anterior)) throw new Error('Ya existe una categoría con ese nombre');
+  const nueva = { nombre, icono: categoria.icono, color: categoria.color };
+  if (anterior) {
+    categorias = categorias.map((c) => (c.nombre === anterior ? nueva : c));
+    gastos = gastos.map((g) => (g.categoria === anterior ? { ...g, categoria: nombre } : g));
+  } else {
+    categorias = [...categorias, nueva];
+  }
+}
 
 export async function demo(params) {
   await espera(400);
+  if (params.action === 'deleteExpense') { eliminados.add(params.id); return respuesta(); }
+  if (params.action === 'restoreExpense') { eliminados.delete(params.id); return respuesta(); }
+  if (params.action === 'saveCategory') { guardarCategoria(params); return respuesta(); }
+  if (params.action === 'deleteCategory') {
+    let movidos = 0;
+    categorias = categorias.filter((c) => c.nombre !== params.nombre);
+    gastos = gastos.map((g) => (g.categoria === params.nombre ? (movidos++, { ...g, categoria: '' }) : g));
+    return respuesta({ movidos });
+  }
   if (params.action === 'setCategory') {
     const g = gastos.find((x) => x.id === params.id);
     let actualizados = 0;
@@ -35,7 +63,7 @@ export async function demo(params) {
       if (x.id === params.id || (x.comercio === g.comercio && !/sin descripci/i.test(g.comercio))) { actualizados++; return { ...x, categoria: params.categoria }; }
       return x;
     });
-    return { ok: true, actualizados, gastos };
+    return respuesta({ actualizados });
   }
-  return { ok: true, nuevos: 0, gastos };
+  return respuesta({ nuevos: 0 });
 }

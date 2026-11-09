@@ -1,23 +1,36 @@
-import { CircleDashed, Clapperboard, House, Lightbulb, Pill, Shapes, ShoppingCart, Car, Tv, UtensilsCrossed } from 'lucide-react';
+import { CircleDashed, iconoPorNombre } from './iconos.js';
 
 export const POR_CLASIFICAR = 'Por clasificar';
 
-export const CATEGORIAS = [
-  { nombre: 'Supermercado', Icono: ShoppingCart, color: '#8FB573' },
-  { nombre: 'Comida y restaurantes', Icono: UtensilsCrossed, color: '#E0A458' },
-  { nombre: 'Transporte', Icono: Car, color: '#6FA8C9' },
-  { nombre: 'Servicios', Icono: Lightbulb, color: '#CDBB5E' },
-  { nombre: 'Vivienda', Icono: House, color: '#B98668' },
-  { nombre: 'Salud', Icono: Pill, color: '#DE7F72' },
-  { nombre: 'Entretenimiento', Icono: Clapperboard, color: '#5FB8A5' },
-  { nombre: 'Suscripciones', Icono: Tv, color: '#8E9DDB' },
-  { nombre: 'Otros', Icono: Shapes, color: '#9AA396' },
+// Las mismas del servidor; se usan hasta que llega la lista real (y en el ejemplo).
+export const CATEGORIAS_INICIALES = [
+  { nombre: 'Supermercado', icono: 'ShoppingCart', color: '#8FB573' },
+  { nombre: 'Comida y restaurantes', icono: 'UtensilsCrossed', color: '#E0A458' },
+  { nombre: 'Transporte', icono: 'Car', color: '#6FA8C9' },
+  { nombre: 'Servicios', icono: 'Lightbulb', color: '#CDBB5E' },
+  { nombre: 'Vivienda', icono: 'House', color: '#B98668' },
+  { nombre: 'Salud', icono: 'Pill', color: '#DE7F72' },
+  { nombre: 'Entretenimiento', icono: 'Clapperboard', color: '#5FB8A5' },
+  { nombre: 'Suscripciones', icono: 'Tv', color: '#8E9DDB' },
+  { nombre: 'Otros', icono: 'Shapes', color: '#9AA396' },
 ];
 
-const PENDIENTE = { nombre: POR_CLASIFICAR, Icono: CircleDashed, color: '#D9B24C' };
+const PENDIENTE = { nombre: POR_CLASIFICAR, icono: 'CircleDashed', Icono: CircleDashed, color: '#D9B24C' };
 
-export const POR_NOMBRE = Object.fromEntries([...CATEGORIAS, PENDIENTE].map((c) => [c.nombre, c]));
-export const cat = (nombre) => POR_NOMBRE[nombre] || PENDIENTE;
+let lista = [];
+let porNombre = {};
+
+/** Cambia la lista de categorías activa (la manda el servidor). */
+export function setCategorias(nuevas) {
+  const validas = Array.isArray(nuevas) && nuevas.length ? nuevas : CATEGORIAS_INICIALES;
+  lista = validas.map((c) => ({ ...c, Icono: iconoPorNombre(c.icono) }));
+  porNombre = Object.fromEntries([...lista, PENDIENTE].map((c) => [c.nombre, c]));
+  return lista;
+}
+setCategorias(CATEGORIAS_INICIALES);
+
+export const categorias = () => lista;
+export const cat = (nombre) => porNombre[nombre] || PENDIENTE;
 
 /** El servidor manda '' para los gastos sin clasificar. */
-export const normalizarCategoria = (c) => (POR_NOMBRE[c] && c !== POR_CLASIFICAR ? c : POR_CLASIFICAR);
+export const normalizarCategoria = (c) => (porNombre[c] && c !== POR_CLASIFICAR ? c : POR_CLASIFICAR);

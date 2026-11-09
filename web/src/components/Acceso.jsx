@@ -40,7 +40,7 @@ export default function Acceso({ onEntrar }) {
       const d = modo === 'registro'
         ? await registrar(clave.trim().toUpperCase(), cedula, password)
         : await login(cedula, password);
-      onEntrar(d.gastos || []);
+      onEntrar(d.gastos || [], d.categorias);
     } catch (err) {
       setError(err.message);
     } finally {

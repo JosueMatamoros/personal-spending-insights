@@ -16,12 +16,31 @@ var POR_CLASIFICAR = '';
 
 var HOJA_GASTOS = 'Gastos';
 var HOJA_REGLAS = 'Reglas';
-var COLUMNAS = ['id', 'fecha', 'banco', 'tipo', 'comercio', 'monto', 'moneda', 'montoOriginal', 'categoria', 'manual', 'messageId'];
+var COLUMNAS = ['id', 'fecha', 'banco', 'tipo', 'comercio', 'monto', 'moneda', 'montoOriginal', 'categoria', 'manual', 'messageId', 'eliminado'];
 
-var CATEGORIAS = [
-  'Supermercado', 'Comida y restaurantes', 'Transporte', 'Servicios', 'Vivienda',
-  'Salud', 'Entretenimiento', 'Suscripciones', 'Otros'
+// Categorías iniciales. Desde la app se pueden editar, agregar y borrar (se guardan en CATEGORIAS_JSON).
+var CATEGORIAS_INICIALES = [
+  { nombre: 'Supermercado', icono: 'ShoppingCart', color: '#8FB573' },
+  { nombre: 'Comida y restaurantes', icono: 'UtensilsCrossed', color: '#E0A458' },
+  { nombre: 'Transporte', icono: 'Car', color: '#6FA8C9' },
+  { nombre: 'Servicios', icono: 'Lightbulb', color: '#CDBB5E' },
+  { nombre: 'Vivienda', icono: 'House', color: '#B98668' },
+  { nombre: 'Salud', icono: 'Pill', color: '#DE7F72' },
+  { nombre: 'Entretenimiento', icono: 'Clapperboard', color: '#5FB8A5' },
+  { nombre: 'Suscripciones', icono: 'Tv', color: '#8E9DDB' },
+  { nombre: 'Otros', icono: 'Shapes', color: '#9AA396' }
 ];
+
+// Si cambia este número, la próxima sincronización vuelve a revisar todo desde FECHA_INICIO
+// (sin duplicar: cada gasto tiene su número de referencia).
+var VERSION_LECTURA = '2';
+
+// Dominios de los bancos: se lee cualquier remitente de estos dominios (no solo los de REMITENTES).
+var DOMINIOS_BANCOS = {
+  'bancobcr.com': 'BCR', 'bcr.fi.cr': 'BCR',
+  'baccredomatic.cr': 'BAC', 'baccredomatic.com': 'BAC', 'credomatic.com': 'BAC',
+  'bancopopularinforma.fi.cr': 'POPULAR', 'bpdc.fi.cr': 'POPULAR', 'bancopopular.fi.cr': 'POPULAR', 'popular.fi.cr': 'POPULAR'
+};
 
 var REMITENTES = {
   'bcrtarjestcta@bancobcr.com': 'BCR',
@@ -123,14 +142,15 @@ function sincronizar() {
     // Revisa desde 3 días antes de la última sincronización (por si algún correo llegó tarde).
     var ultima = props.getProperty('ULTIMA_SYNC');
     var desde = inicio;
-    if (ultima) {
+    var reescaneo = props.getProperty('VERSION_LECTURA') !== VERSION_LECTURA;
+    if (ultima && !reescaneo) {
       var d = new Date(Number(ultima) - 3 * 24 * 3600 * 1000);
       if (d > desde) desde = d;
     }
 
     var existentes = idsExistentes_(hoja);
     var reglas = leerReglas_();
-    var remitentes = Object.keys(REMITENTES).map(function (r) { return 'from:' + r; }).join(' OR ');
+    var remitentes = Object.keys(DOMINIOS_BANCOS).map(function (r) { return 'from:' + r; }).join(' OR ');
     var query = '(' + remitentes + ') after:' + Utilities.formatDate(new Date(desde.getTime() - 24 * 3600 * 1000), 'America/Costa_Rica', 'yyyy/MM/dd');
 
     var filas = [];
@@ -151,7 +171,7 @@ function sincronizar() {
             if (g.fecha < inicio || existentes[g.id]) return;
             existentes[g.id] = true;
             g.categoria = categorizar_(g.textoCategoria, reglas);
-            filas.push([g.id, g.fecha, g.banco, g.tipo, g.comercio, g.monto, g.moneda, g.montoOriginal, g.categoria, false, msg.getId()]);
+            filas.push([g.id, g.fecha, g.banco, g.tipo, g.comercio, g.monto, g.moneda, g.montoOriginal, g.categoria, false, msg.getId(), false]);
           });
         });
       });
@@ -162,6 +182,7 @@ function sincronizar() {
       hoja.getRange(hoja.getLastRow() + 1, 1, filas.length, COLUMNAS.length).setValues(filas);
     }
     props.setProperty('ULTIMA_SYNC', String(Date.now()));
+    props.setProperty('VERSION_LECTURA', VERSION_LECTURA);
     return { nuevos: filas.length };
   } finally {
     lock.releaseLock();
@@ -192,14 +213,27 @@ function migrarPorClasificar_(hoja, props) {
 /** Devuelve una lista de gastos encontrados en un correo (normalmente uno). */
 function leerCorreo_(msg) {
   var from = (msg.getFrom().match(/<([^>]+)>/) || [null, msg.getFrom()])[1].trim().toLowerCase();
-  var banco = REMITENTES[from];
+  var banco = REMITENTES[from] || bancoPorDominio_(from);
   if (!banco) return [];
   var texto = htmlATexto_(msg.getBody() || msg.getPlainBody());
+  var nombre = { BCR: 'BCR', BAC: 'BAC', POPULAR: 'Popular', POPULAR_SINPE: 'Popular' }[banco];
 
-  if (banco === 'BCR') return leerBCR_(texto, msg);
-  if (banco === 'BAC' || banco === 'POPULAR') return leerEtiquetas_(texto, msg, banco === 'BAC' ? 'BAC' : 'Popular');
-  if (banco === 'POPULAR_SINPE') return leerSinpe_(texto, msg);
-  return [];
+  var gastos = [];
+  if (banco === 'BCR') gastos = leerBCR_(texto, msg);
+  else if (banco === 'BAC' || banco === 'POPULAR') gastos = leerEtiquetas_(texto, msg, nombre);
+  else if (banco === 'POPULAR_SINPE') gastos = leerSinpe_(texto, msg);
+  // Si no fue una compra con tarjeta, revisa si es un SINPE / transferencia enviada
+  if (!gastos.length) gastos = leerTransferencia_(texto, msg, nombre);
+  return gastos;
+}
+
+function bancoPorDominio_(from) {
+  var dominio = from.split('@')[1] || '';
+  var claves = Object.keys(DOMINIOS_BANCOS);
+  for (var i = 0; i < claves.length; i++) {
+    if (dominio === claves[i] || dominio.slice(-claves[i].length - 1) === '.' + claves[i]) return DOMINIOS_BANCOS[claves[i]];
+  }
+  return null;
 }
 
 /** BCR: tabla con columnas Fecha | Autorización | No.Referencia | Monto | Moneda | Comercio | Estado */
@@ -279,6 +313,59 @@ function leerSinpe_(texto, msg) {
   }];
 }
 
+/**
+ * SINPE Móvil, SINPE y transferencias de cualquiera de los 3 bancos.
+ * Solo cuenta dinero que SALE; ignora lo recibido / acreditado.
+ */
+function leerTransferencia_(texto, msg, banco) {
+  var plano = texto.replace(/\n/g, ' ');
+  var asunto = msg.getSubject() || '';
+  var todo = asunto + ' ' + plano;
+  if (!/sinpe|transferencia|d[eé]bito en tiempo real|\bDTR\b/i.test(todo)) return [];
+  var tipoTx = valorEtiqueta_(texto, 'Tipo de (?:Transacci[oó]n|movimiento|operaci[oó]n)');
+  // Lo que entra no es gasto (se revisa el asunto y el inicio del correo, no el pie de página)
+  var inicioTxt = asunto + ' ' + plano.slice(0, 600);
+  if (/acreditad|ha recibido|has recibido|recibiste|recibida|a su favor|le (?:ha )?(?:enviado|transferido)|te (?:envi|transfiri)|abonad|cr[eé]dito a (?:su|tu) cuenta|devoluci/i.test(inicioTxt)) return [];
+  // Pagos a las propias tarjetas o movimientos entre cuentas propias no son gastos nuevos
+  if (/cuentas propias|pago (?:de|a) (?:su |tu )?tarjeta|pago tarjeta/i.test(inicioTxt)) return [];
+  var sale = /debitad|enviad|realizad|transferiste|ha transferido|ha enviado|usted envi|pago a|salida|d[eé]bito|transferencia (?:sinpe )?(?:m[oó]vil )?a\b/i.test(inicioTxt) ||
+             /sinpe|transferencia/i.test(tipoTx);
+  if (!sale) return [];
+
+  var montoTxt = valorEtiqueta_(texto, '(?:Monto(?: transferido| enviado| debitado)?|Importe|Total)');
+  var m = null;
+  if (!/\d/.test(montoTxt)) {
+    m = plano.match(/(?:monto(?: de)?|por(?: un monto de)?|importe(?: de)?)\s*:?\s*((?:₡|¢|CRC|USD|\$|colones)?\s*[\d][\d.,]*\s*(?:colones|d[oó]lares|CRC|USD)?)/i) ||
+        plano.match(/((?:₡|¢|CRC)\s*[\d][\d.,]*)/);
+    montoTxt = m ? m[1] : '';
+  }
+  var monto = parseMonto_(montoTxt);
+  if (!monto) return [];
+  var moneda = /USD|\$|d[oó]lar/i.test(montoTxt) ? 'USD' : 'CRC';
+
+  var desc = valorEtiqueta_(texto, '(?:Descripci[oó]n|Detalle|Concepto|Motivo|Comentario)') ||
+    ((plano.match(/(?:Descripci[oó]n|Detalle|Concepto|Motivo)\s*:\s*(.*?)(?:\.\s|Cod\.?|Referencia|Comprobante|Fecha|$)/i) || [])[1] || '');
+  desc = desc.replace(/[_\s.]+$/g, '').replace(/^[_\s.]+/g, '').replace(/_+/g, ' ').trim();
+  var destino = valorEtiqueta_(texto, '(?:Destinatario|Beneficiario|Nombre del (?:destinatario|beneficiario)|Cliente destino|Enviado a|Para)') || '';
+  destino = destino.replace(/\s+/g, ' ').trim();
+  var ref = (valorEtiqueta_(texto, '(?:Cod\.? ?)?(?:Referencia|Comprobante|N[uú]mero de (?:referencia|comprobante)|Documento)').match(/[\w-]{4,}/) || [])[0] ||
+    (plano.match(/(?:Referencia|Comprobante)\s*:?\s*(\d{4,})/i) || [])[1] || msg.getId();
+  var fechaTxt = valorEtiqueta_(texto, 'Fecha(?: y hora)?(?: de la transacci[oó]n)?') ||
+    (plano.match(/(\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}(?::\d{2})?)/) || [])[1];
+  var nombreGasto = desc || destino;
+  return [{
+    id: 'SINPE-' + ref,
+    fecha: parseFecha_(fechaTxt) || msg.getDate(),
+    banco: banco,
+    tipo: 'SINPE',
+    comercio: nombreGasto ? 'SINPE · ' + capitalizar_(nombreGasto) : 'SINPE (sin descripción)',
+    moneda: moneda,
+    montoOriginal: monto,
+    monto: aColones_(monto, moneda),
+    textoCategoria: (desc + ' ' + destino).trim()
+  }];
+}
+
 // ───────────────────────── Utilidades de lectura ─────────────────────────
 
 function htmlATexto_(html) {
@@ -313,9 +400,18 @@ function valorEtiqueta_(texto, etiqueta) {
 }
 
 function parseMonto_(txt) {
-  var limpio = String(txt).replace(/[^\d.,]/g, '');
-  // Formato 7,500.00 → coma = miles, punto = decimales
-  return Number(limpio.replace(/,/g, '')) || 0;
+  var limpio = String(txt).replace(/[^\d.,]/g, '').replace(/[.,]+$/, '');
+  var coma = limpio.lastIndexOf(','), punto = limpio.lastIndexOf('.');
+  if (coma >= 0 && punto >= 0) {
+    // El separador que va de último es el de decimales: 7,500.00 o 7.500,00
+    limpio = coma > punto ? limpio.replace(/\./g, '').replace(',', '.') : limpio.replace(/,/g, '');
+  } else if (coma >= 0) {
+    // 7,500 → miles · 7500,50 → decimales
+    limpio = /,\d{2}$/.test(limpio) && !/,\d{3}/.test(limpio) ? limpio.replace(',', '.') : limpio.replace(/,/g, '');
+  } else if (punto >= 0 && /\.\d{3}(\.|$)/.test(limpio) && !/\.\d{2}$/.test(limpio)) {
+    limpio = limpio.replace(/\./g, '');  // 7.500 → miles
+  }
+  return Number(limpio) || 0;
 }
 
 function aColones_(monto, moneda) {
@@ -362,13 +458,20 @@ function categorizar_(texto, reglas) {
   var relleno = ' ' + n + ' ';
   // 1) Reglas aprendidas (cuando ella cambia una categoría en la app)
   for (var i = 0; i < reglas.length; i++) {
-    if (relleno.indexOf(' ' + reglas[i][0] + ' ') >= 0) return reglas[i][1];
+    if (relleno.indexOf(' ' + reglas[i][0] + ' ') >= 0) {
+      var r = resolverCategoria_(reglas[i][1]);
+      if (r) return r;
+    }
   }
   // 2) Palabras clave por defecto
   for (var c = 0; c < PALABRAS_CLAVE.length; c++) {
     var palabras = PALABRAS_CLAVE[c][1];
     for (var k = 0; k < palabras.length; k++) {
-      if (relleno.indexOf(' ' + palabras[k] + ' ') >= 0) return PALABRAS_CLAVE[c][0];
+      if (relleno.indexOf(' ' + palabras[k] + ' ') >= 0) {
+        var res = resolverCategoria_(PALABRAS_CLAVE[c][0]);
+        if (res) return res;
+        break;
+      }
     }
   }
   return POR_CLASIFICAR;
@@ -386,7 +489,7 @@ function leerReglas_() {
 
 /** Cambia la categoría de un gasto y aprende la regla para ese comercio. */
 function cambiarCategoria_(id, categoria) {
-  if (CATEGORIAS.indexOf(categoria) < 0) throw new Error('Categoría inválida');
+  if (nombresCategorias_().indexOf(categoria) < 0) throw new Error('Categoría inválida');
   var hoja = hojaGastos_();
   var datos = hoja.getDataRange().getValues();
   var col = indices_();
@@ -463,13 +566,25 @@ function doPost(e) {
     validarSesion_(b.sesion);
     switch (b.action) {
       case 'gastos':
-        return { ok: true, gastos: listarGastos_() };
+        return datos_({});
       case 'sync':
         var r = sincronizar();
-        return { ok: true, nuevos: r.nuevos, gastos: listarGastos_() };
+        return datos_({ nuevos: r.nuevos });
       case 'setCategory':
         var res = cambiarCategoria_(String(b.id), String(b.categoria));
-        return { ok: true, actualizados: res.actualizados, gastos: listarGastos_() };
+        return datos_({ actualizados: res.actualizados });
+      case 'deleteExpense':
+        marcarEliminado_(String(b.id), true);
+        return datos_({});
+      case 'restoreExpense':
+        marcarEliminado_(String(b.id), false);
+        return datos_({});
+      case 'saveCategory':
+        guardarCategoria_(b.anterior ? String(b.anterior) : '', b.categoria || {});
+        return datos_({});
+      case 'deleteCategory':
+        var mov = borrarCategoria_(String(b.nombre));
+        return datos_({ movidos: mov });
       case 'logout':
         PropertiesService.getScriptProperties().deleteProperty('S_' + b.sesion);
         return { ok: true };
@@ -549,7 +664,7 @@ function crearSesion_() {
   var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
   var expira = Date.now() + DURACION_SESION_MS;
   props.setProperty('S_' + token, String(expira));
-  return { ok: true, sesion: token, expira: expira, gastos: listarGastos_() };
+  return datos_({ sesion: token, expira: expira });
 }
 
 function validarSesion_(token) {
@@ -613,8 +728,9 @@ function listarGastos_() {
   if (hoja.getLastRow() < 2) return [];
   var col = indices_();
   var tz = 'America/Costa_Rica';
+  var nombres = nombresCategorias_();
   return hoja.getRange(2, 1, hoja.getLastRow() - 1, COLUMNAS.length).getValues()
-    .filter(function (r) { return r[col.id]; })
+    .filter(function (r) { return r[col.id] && r[col.eliminado] !== true; })
     .map(function (r) {
       var f = r[col.fecha] instanceof Date ? r[col.fecha] : new Date(r[col.fecha]);
       return {
@@ -626,9 +742,127 @@ function listarGastos_() {
         monto: Number(r[col.monto]) || 0,
         moneda: r[col.moneda],
         montoOriginal: Number(r[col.montoOriginal]) || 0,
-        categoria: CATEGORIAS.indexOf(r[col.categoria]) >= 0 ? r[col.categoria] : POR_CLASIFICAR
+        categoria: nombres.indexOf(r[col.categoria]) >= 0 ? r[col.categoria] : POR_CLASIFICAR
       };
     });
+}
+
+/** Respuesta estándar: gastos + categorías + lo que se agregue. */
+function datos_(extra) {
+  extra.ok = true;
+  extra.gastos = listarGastos_();
+  extra.categorias = categorias_();
+  return extra;
+}
+
+/** Elimina (o recupera) un gasto. Queda marcado para que el correo no lo vuelva a agregar. */
+function marcarEliminado_(id, eliminado) {
+  var hoja = hojaGastos_();
+  var col = indices_();
+  var ids = hoja.getRange(2, 1, Math.max(hoja.getLastRow() - 1, 1), 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === id) {
+      hoja.getRange(i + 2, col.eliminado + 1).setValue(eliminado);
+      return;
+    }
+  }
+  throw new Error('Gasto no encontrado');
+}
+
+// ───────────────────────── Categorías editables ─────────────────────────
+
+var ICONO_RE_ = /^[A-Za-z0-9]{2,40}$/;
+var COLOR_RE_ = /^#[0-9A-Fa-f]{6}$/;
+
+function categorias_() {
+  var json = PropertiesService.getScriptProperties().getProperty('CATEGORIAS_JSON');
+  try { if (json) return JSON.parse(json); } catch (e) { /* usa las iniciales */ }
+  return CATEGORIAS_INICIALES;
+}
+
+function nombresCategorias_() {
+  return categorias_().map(function (c) { return c.nombre; });
+}
+
+/** Las palabras clave usan los nombres iniciales; si se renombró o borró, sigue el cambio. */
+function resolverCategoria_(nombre) {
+  var alias = JSON.parse(PropertiesService.getScriptProperties().getProperty('ALIAS_CATEGORIAS') || '{}');
+  for (var i = 0; i < 10 && Object.prototype.hasOwnProperty.call(alias, nombre); i++) nombre = alias[nombre];
+  return nombresCategorias_().indexOf(nombre) >= 0 ? nombre : POR_CLASIFICAR;
+}
+
+function guardarAlias_(de, a) {
+  var props = PropertiesService.getScriptProperties();
+  var alias = JSON.parse(props.getProperty('ALIAS_CATEGORIAS') || '{}');
+  Object.keys(alias).forEach(function (k) { if (alias[k] === de) alias[k] = a; });
+  alias[de] = a;
+  delete alias[a];
+  props.setProperty('ALIAS_CATEGORIAS', JSON.stringify(alias));
+}
+
+/** Agrega una categoría nueva, o edita una existente (anterior = su nombre actual). */
+function guardarCategoria_(anterior, c) {
+  var nombre = String(c.nombre || '').replace(/\s+/g, ' ').trim();
+  if (!nombre) throw new Error('Escribe un nombre');
+  if (nombre.length > 30) throw new Error('El nombre es muy largo (máximo 30 letras)');
+  if (/^por clasificar$/i.test(nombre)) throw new Error('Ese nombre está reservado');
+  var icono = ICONO_RE_.test(String(c.icono)) ? String(c.icono) : 'Tag';
+  var color = COLOR_RE_.test(String(c.color)) ? String(c.color).toUpperCase() : '#9AA396';
+
+  var lista = categorias_().slice();
+  var repetida = lista.some(function (x) { return x.nombre.toLowerCase() === nombre.toLowerCase() && x.nombre !== anterior; });
+  if (repetida) throw new Error('Ya existe una categoría con ese nombre');
+
+  if (anterior) {
+    var i = lista.map(function (x) { return x.nombre; }).indexOf(anterior);
+    if (i < 0) throw new Error('Categoría no encontrada');
+    lista[i] = { nombre: nombre, icono: icono, color: color };
+    if (anterior !== nombre) {
+      reemplazarCategoriaEnHojas_(anterior, nombre);
+      guardarAlias_(anterior, nombre);
+    }
+  } else {
+    if (lista.length >= 30) throw new Error('Máximo 30 categorías');
+    lista.push({ nombre: nombre, icono: icono, color: color });
+  }
+  PropertiesService.getScriptProperties().setProperty('CATEGORIAS_JSON', JSON.stringify(lista));
+}
+
+/** Borra una categoría. Sus gastos vuelven a "Por clasificar". */
+function borrarCategoria_(nombre) {
+  var lista = categorias_().filter(function (x) { return x.nombre !== nombre; });
+  if (lista.length === categorias_().length) throw new Error('Categoría no encontrada');
+  if (!lista.length) throw new Error('Debe quedar al menos una categoría');
+  PropertiesService.getScriptProperties().setProperty('CATEGORIAS_JSON', JSON.stringify(lista));
+  guardarAlias_(nombre, POR_CLASIFICAR);
+  return reemplazarCategoriaEnHojas_(nombre, POR_CLASIFICAR);
+}
+
+function reemplazarCategoriaEnHojas_(de, a) {
+  var col = indices_();
+  var hoja = hojaGastos_();
+  var movidos = 0;
+  if (hoja.getLastRow() >= 2) {
+    var rango = hoja.getRange(2, 1, hoja.getLastRow() - 1, COLUMNAS.length);
+    var datos = rango.getValues();
+    datos.forEach(function (r) {
+      if (r[col.categoria] === de) {
+        r[col.categoria] = a;
+        if (a === POR_CLASIFICAR) r[col.manual] = false;
+        movidos++;
+      }
+    });
+    if (movidos) rango.setValues(datos);
+  }
+  var reglas = libro_().getSheetByName(HOJA_REGLAS);
+  if (reglas && reglas.getLastRow() >= 2) {
+    for (var f = reglas.getLastRow(); f >= 2; f--) {
+      if (reglas.getRange(f, 2).getValue() !== de) continue;
+      if (a === POR_CLASIFICAR) reglas.deleteRow(f);
+      else reglas.getRange(f, 2).setValue(a);
+    }
+  }
+  return movidos;
 }
 
 // ───────────────────────── Acceso a la hoja ─────────────────────────
@@ -641,6 +875,9 @@ function libro_() {
 function hojaGastos_() {
   var h = libro_().getSheetByName(HOJA_GASTOS);
   if (!h) throw new Error('Falta ejecutar configurar()');
+  if (h.getRange(1, COLUMNAS.length).getValue() !== COLUMNAS[COLUMNAS.length - 1]) {
+    h.getRange(1, COLUMNAS.length).setValue(COLUMNAS[COLUMNAS.length - 1]);
+  }
   return h;
 }
 
@@ -667,7 +904,7 @@ function revisarCorreos() {
   var inicio = parseISO_(FECHA_INICIO);
   var hoja = hojaGastos_();
   var existentes = idsExistentes_(hoja);
-  var dominios = ['baccredomatic', 'credomatic', 'bancobcr', 'bcr.fi.cr', 'bpdc.fi.cr', 'bancopopular', 'bp.fi.cr', 'popular.fi.cr'];
+  var dominios = Object.keys(DOMINIOS_BANCOS);
   var query = '(' + dominios.map(function (d) { return 'from:' + d; }).join(' OR ') + ') after:' +
     Utilities.formatDate(new Date(inicio.getTime() - 24 * 3600 * 1000), 'America/Costa_Rica', 'yyyy/MM/dd');
 

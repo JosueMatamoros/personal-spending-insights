@@ -24,7 +24,7 @@ export function borrarSesion() {
 }
 
 export const leerCache = () => leer(K_CACHE);
-export const guardarCache = (gastos) => escribir(K_CACHE, { gastos, en: Date.now() });
+export const guardarCache = (gastos, categorias) => escribir(K_CACHE, { gastos, categorias, en: Date.now() });
 
 export class SesionVencida extends Error {}
 
@@ -56,7 +56,7 @@ async function llamar(action, datos = {}) {
 
 function conSesion(data) {
   guardarSesion({ sesion: data.sesion, expira: data.expira });
-  if (data.gastos) guardarCache(data.gastos);
+  if (data.gastos) guardarCache(data.gastos, data.categorias);
   return data;
 }
 
@@ -66,6 +66,11 @@ export const registrar = async (clave, cedula, password) => conSesion(await llam
 export const obtenerGastos = () => llamar('gastos');
 export const sincronizar = () => llamar('sync');
 export const cambiarCategoria = (id, categoria) => llamar('setCategory', { id, categoria });
+export const eliminarGasto = (id) => llamar('deleteExpense', { id });
+export const restaurarGasto = (id) => llamar('restoreExpense', { id });
+/** Crea (sin `anterior`) o edita una categoría. */
+export const guardarCategoria = (anterior, categoria) => llamar('saveCategory', { anterior, categoria });
+export const borrarCategoria = (nombre) => llamar('deleteCategory', { nombre });
 export async function cerrarSesion() {
   try { await llamar('logout'); } catch { /* igual se borra localmente */ }
   borrarSesion();

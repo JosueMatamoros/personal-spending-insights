@@ -5,9 +5,10 @@ import Bloqueo from './components/Bloqueo.jsx';
 import Badge from './components/Badge.jsx';
 import Dona from './components/Dona.jsx';
 import HojaCategoria from './components/HojaCategoria.jsx';
+import Categorias from './components/Categorias.jsx';
 import { ChevronLeft, ChevronRight, CircleDashed, RefreshCw, ScanFace, Settings, Sprout } from 'lucide-react';
-import { CATEGORIAS, POR_CLASIFICAR, cat, normalizarCategoria } from './lib/categorias.js';
-import { SesionVencida, borrarSesion, cambiarCategoria, cerrarSesion, guardarCache, leerCache, leerSesion, obtenerGastos, sincronizar } from './lib/api.js';
+import { POR_CLASIFICAR, cat, categorias, normalizarCategoria, setCategorias } from './lib/categorias.js';
+import { SesionVencida, borrarCategoria, borrarSesion, cambiarCategoria, cerrarSesion, eliminarGasto, guardarCache, guardarCategoria, leerCache, leerSesion, obtenerGastos, restaurarGasto, sincronizar } from './lib/api.js';
 import { K_PREGUNTADO, activarFaceId, faceIdActivo, faceIdDisponible } from './lib/faceid.js';
 import { claveMes, colones, nombreComercio, diaDelMes, etiquetaDia, hora, mesDeFecha, moverMes, nombreMes } from './lib/formato.js';
 
@@ -19,7 +20,12 @@ export default function App() {
   const [bloqueado, setBloqueado] = useState(() => Boolean(leerSesion()) && faceIdActivo());
   const [ajustes, setAjustes] = useState(false);
   const [ofrecerFaceId, setOfrecerFaceId] = useState(false);
-  const [gastos, setGastos] = useState(() => (leerCache()?.gastos || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) })));
+  const [gastos, setGastos] = useState(() => {
+    const c = leerCache();
+    setCategorias(c?.categorias);
+    return (c?.gastos || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) }));
+  });
+  const [gestionCategorias, setGestionCategorias] = useState(false);
   const [mes, setMes] = useState(() => {
     const actual = claveMes(new Date());
     return actual < MES_INICIO ? MES_INICIO : actual;
@@ -30,18 +36,21 @@ export default function App() {
   const [aviso, setAviso] = useState(null);
   const conectado = Boolean(sesion);
 
-  const actualizar = useCallback((lista) => {
+  // `lista` = gastos del servidor; `cats` = categorías (si vienen en la respuesta)
+  const actualizar = useCallback((lista, cats) => {
+    if (cats) setCategorias(cats);
     setGastos((lista || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) })));
-    guardarCache(lista);
+    guardarCache(lista, cats || categorias().map(({ nombre, icono, color }) => ({ nombre, icono, color })));
   }, []);
+  const aplicar = useCallback((d) => actualizar(d.gastos, d.categorias), [actualizar]);
 
-  const mostrarAviso = useCallback((texto, tipo = 'ok') => {
-    setAviso({ texto, tipo, id: Date.now() });
+  const mostrarAviso = useCallback((texto, tipo = 'ok', accion = null) => {
+    setAviso({ texto, tipo, accion, id: Date.now() });
   }, []);
 
   useEffect(() => {
     if (!aviso) return;
-    const t = setTimeout(() => setAviso(null), 3800);
+    const t = setTimeout(() => setAviso(null), aviso.accion ? 6000 : 3800);
     return () => clearTimeout(t);
   }, [aviso]);
 
@@ -51,7 +60,7 @@ export default function App() {
     let vivo = true;
     setCargando(true);
     obtenerGastos()
-      .then((d) => vivo && actualizar(d.gastos))
+      .then((d) => vivo && aplicar(d))
       .catch((e) => {
         if (!vivo) return;
         if (e instanceof SesionVencida) salir();
@@ -66,7 +75,7 @@ export default function App() {
     setCargando(true);
     try {
       const d = await sincronizar();
-      actualizar(d.gastos);
+      aplicar(d);
       mostrarAviso(d.nuevos ? `${d.nuevos} gasto${d.nuevos === 1 ? '' : 's'} nuevo${d.nuevos === 1 ? '' : 's'}` : 'Todo al día');
     } catch (e) {
       if (e instanceof SesionVencida) salir();
@@ -85,9 +94,9 @@ export default function App() {
     if (location.hash === '#demo') history.replaceState(null, '', location.pathname);
   }
 
-  async function entrar(lista) {
+  async function entrar(lista, cats) {
     setSesion(leerSesion());
-    actualizar(lista);
+    actualizar(lista, cats);
     // Ofrece Face ID una sola vez después del primer ingreso
     let preguntado = false;
     try { preguntado = Boolean(localStorage.getItem(K_PREGUNTADO)); } catch { /* nada */ }
@@ -140,13 +149,56 @@ export default function App() {
     actualizar(gastos.map((x) => (x.id === g.id ? { ...x, categoria } : x)));
     try {
       const d = await cambiarCategoria(g.id, categoria);
-      actualizar(d.gastos);
+      aplicar(d);
       const otros = d.actualizados - 1;
       mostrarAviso(otros > 0 ? `Listo. También moví ${otros} gasto${otros === 1 ? '' : 's'} más de ${nombreComercio(g.comercio)}` : `Movido a ${categoria}`);
     } catch (e) {
       actualizar(anterior);
       if (e instanceof SesionVencida) return salir();
       mostrarAviso('No se pudo guardar: ' + e.message, 'error');
+    }
+  }
+
+  async function eliminar(g) {
+    setEditando(null);
+    const anterior = gastos;
+    setGastos(gastos.filter((x) => x.id !== g.id));
+    try {
+      aplicar(await eliminarGasto(g.id));
+      mostrarAviso('Gasto eliminado', 'ok', {
+        texto: 'Deshacer',
+        fn: async () => {
+          setAviso(null);
+          try { aplicar(await restaurarGasto(g.id)); mostrarAviso('Gasto recuperado'); } catch (e) { mostrarAviso(e.message, 'error'); }
+        },
+      });
+    } catch (e) {
+      setGastos(anterior);
+      if (e instanceof SesionVencida) return salir();
+      mostrarAviso('No se pudo eliminar: ' + e.message, 'error');
+    }
+  }
+
+  async function guardarCat(anterior, datos) {
+    try {
+      aplicar(await guardarCategoria(anterior, datos));
+      if (filtro && filtro === anterior) setFiltro(datos.nombre);
+      mostrarAviso(anterior ? 'Categoría actualizada' : `Categoría “${datos.nombre}” creada`);
+    } catch (e) {
+      if (e instanceof SesionVencida) return salir();
+      throw e;
+    }
+  }
+
+  async function borrarCat(nombre) {
+    try {
+      const d = await borrarCategoria(nombre);
+      aplicar(d);
+      if (filtro === nombre) setFiltro(null);
+      mostrarAviso(d.movidos ? `Borrada · ${d.movidos} gasto${d.movidos === 1 ? '' : 's'} quedaron por clasificar` : 'Categoría borrada');
+    } catch (e) {
+      if (e instanceof SesionVencida) return salir();
+      throw e;
     }
   }
 
@@ -163,7 +215,7 @@ export default function App() {
     const totalPrev = suma(delPrev);
     const hayPrev = prev >= MES_INICIO;
 
-    const porCat = [...CATEGORIAS, { nombre: POR_CLASIFICAR }].map((c) => {
+    const porCat = [...categorias(), { nombre: POR_CLASIFICAR }].map((c) => {
       const t = suma(delMes.filter((g) => g.categoria === c.nombre));
       const tp = suma(delPrev.filter((g) => g.categoria === c.nombre));
       return { nombre: c.nombre, total: t, prev: tp, cantidad: delMes.filter((g) => g.categoria === c.nombre).length };
@@ -323,12 +375,14 @@ export default function App() {
         </>
       )}
 
-      {editando && <HojaCategoria gasto={editando} onElegir={elegirCategoria} onCerrar={() => setEditando(null)} />}
+      {editando && <HojaCategoria gasto={editando} onElegir={elegirCategoria} onEliminar={eliminar} onCerrar={() => setEditando(null)} />}
+      {gestionCategorias && <Categorias onGuardar={guardarCat} onBorrar={borrarCat} onCerrar={() => setGestionCategorias(false)} />}
       {ajustes && (
         <Ajustes
           sesion={sesion}
           avisar={mostrarAviso}
           onCerrar={() => setAjustes(false)}
+          onCategorias={() => { setAjustes(false); setGestionCategorias(true); }}
           onCerrarSesion={async () => { await cerrarSesion(); salir(); }}
         />
       )}
@@ -346,7 +400,12 @@ export default function App() {
           </section>
         </div>
       )}
-      {aviso && <div key={aviso.id} className={'aviso ' + aviso.tipo} role="status">{aviso.texto}</div>}
+      {aviso && (
+        <div key={aviso.id} className={'aviso ' + aviso.tipo} role="status">
+          <span>{aviso.texto}</span>
+          {aviso.accion && <button className="aviso-accion" onClick={aviso.accion.fn}>{aviso.accion.texto}</button>}
+        </div>
+      )}
     </div>
   );
 }
