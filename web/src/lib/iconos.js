@@ -1,7 +1,7 @@
 import {
   Baby, Beer, Bike, BookOpen, Briefcase, Bus, Car, CircleDashed, Clapperboard, Coffee, CreditCard, Droplet, Dumbbell, Fuel,
   Gamepad2, Gift, GraduationCap, HandHeart, Heart, House, Landmark, Lightbulb, Music, PawPrint, PiggyBank, Pill, Pizza, Plane,
-  Receipt, Scissors, Apple, Banana, Citrus, Megaphone, CalendarClock, Compass, Mountain, UserCheck, Sprout, Wheat, Hammer, Shapes, Shirt, ShoppingCart, Smartphone, Sofa, Sparkles, Stethoscope, Tag, Tent, TreePalm, Tv, Users,
+  Receipt, Scissors, Tractor, Fence, Carrot, Warehouse, Apple, Banana, Citrus, Megaphone, CalendarClock, Compass, Mountain, UserCheck, Sprout, Wheat, Hammer, Shapes, Shirt, ShoppingCart, Smartphone, Sofa, Sparkles, Stethoscope, Tag, Tent, TreePalm, Tv, Users,
   UtensilsCrossed, Wifi, Wrench, Zap,
 } from 'lucide-react';
 
@@ -10,7 +10,7 @@ export const ICONOS = {
   ShoppingCart, UtensilsCrossed, Coffee, Pizza, Beer, Car, Bus, Fuel, Bike, Plane, Lightbulb, Zap, Droplet, Wifi, Smartphone,
   House, Sofa, Wrench, Pill, Stethoscope, Heart, Clapperboard, Music, Gamepad2, Tv, Shirt, Scissors, Sparkles, Dumbbell,
   GraduationCap, BookOpen, Baby, PawPrint, Gift, HandHeart, Users, Tent, TreePalm, Briefcase, Landmark, PiggyBank, CreditCard,
-  Sprout, Wheat, Hammer, Compass, Mountain, UserCheck, Apple, Banana, Citrus, Megaphone, CalendarClock, Receipt, Tag, Shapes,
+  Tractor, Fence, Carrot, Warehouse, Sprout, Wheat, Hammer, Compass, Mountain, UserCheck, Apple, Banana, Citrus, Megaphone, CalendarClock, Receipt, Tag, Shapes,
 };
 
 export const iconoPorNombre = (n) => ICONOS[n] || Tag;
