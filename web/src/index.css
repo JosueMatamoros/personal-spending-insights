@@ -324,3 +324,21 @@ input, select, textarea { font-size: max(16px, 1em); }
 .borrar-cat { color: var(--sube); flex: none; }
 .fila-borrar { padding: 12px 2px; display: grid; gap: 12px; font-size: 0.9rem; }
 .fila-borrar .confirmar-btns { margin-top: 0; }
+
+/* ── Guías por tour ── */
+.guias-btn { border-color: var(--borde); background: var(--superficie); }
+.mes-hoja { margin: 14px 0 8px; }
+.mes-hoja h3 { font-size: 1rem; font-weight: 700; }
+.guias-resumen { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 0.9rem; margin-bottom: 12px; }
+.guias-resumen .pendiente { color: #D9B24C; font-weight: 600; }
+.lista-guias { overflow: hidden; }
+.lista-guias li { padding: 12px 14px; display: grid; gap: 10px; }
+.lista-guias li + li { border-top: 1px solid var(--borde); }
+.lista-guias li.falta { background: rgba(217, 178, 76, 0.08); }
+.guia-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.guia-ops { display: flex; flex-wrap: wrap; gap: 8px; }
+.opcion { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--borde); background: var(--superficie-2); font-size: 0.85rem; font-weight: 600; color: inherit; }
+.opcion.activo { border-color: var(--musgo); background: color-mix(in srgb, var(--musgo) 22%, var(--superficie-2)); }
+.opcion.tenue { color: var(--muted); }
+.opcion.tenue.activo { color: inherit; border-color: var(--muted); background: var(--superficie-2); }
+.opcion:disabled { opacity: 0.55; }

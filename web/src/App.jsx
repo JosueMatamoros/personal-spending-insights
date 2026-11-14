@@ -8,7 +8,8 @@ import Dona from './components/Dona.jsx';
 import Grupo from './components/Grupo.jsx';
 import HojaCategoria from './components/HojaCategoria.jsx';
 import NuevoGasto from './components/NuevoGasto.jsx';
-import { ChevronLeft, ChevronRight, CircleDashed, Plus, RefreshCw, ScanFace, Settings, Sprout, UserRound } from 'lucide-react';
+import PagosGuias from './components/PagosGuias.jsx';
+import { ChevronLeft, ChevronRight, CircleDashed, Compass, Plus, RefreshCw, ScanFace, Settings, Sprout, UserRound } from 'lucide-react';
 import { POR_CLASIFICAR, cat, categorias, idDe, normalizarCategoria, setCategorias } from './lib/categorias.js';
 import { iconoPorNombre } from './lib/iconos.js';
 import {
@@ -40,7 +41,7 @@ export default function App() {
   });
   const [filtro, setFiltro] = useState(null);
   const [editando, setEditando] = useState(null);
-  const [panel, setPanel] = useState(null); // ajustes | categorias | nuevo | grupo-nuevo | grupo-editar | faceid
+  const [panel, setPanel] = useState(null); // ajustes | categorias | nuevo | grupo-nuevo | grupo-editar | faceid | guias
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const conectado = Boolean(sesion);
@@ -393,6 +394,19 @@ export default function App() {
         )}
       </section>
 
+      {grupo?.pagosGuias && (
+        <button className="pendientes tarjeta guias-btn" onClick={() => setPanel('guias')}>
+          <Compass size={22} strokeWidth={2} color={grupo.guiasPendientes ? '#D9B24C' : 'var(--musgo)'} />
+          <span>
+            <strong>Guías por tour</strong>
+            <span className="muted pequeno">
+              {grupo.guiasPendientes ? `${grupo.guiasPendientes} guía${grupo.guiasPendientes === 1 ? '' : 's'} sin marcar quién pagó` : 'Todos los guías están al día'}
+            </span>
+          </span>
+          <ChevronRight size={18} color="var(--muted)" />
+        </button>
+      )}
+
       {reporte.pendientes.length > 0 && filtro !== POR_CLASIFICAR && (
         <button className="pendientes tarjeta" onClick={() => { setFiltro(POR_CLASIFICAR); setTimeout(() => document.querySelector('.movs')?.scrollIntoView({ behavior: 'smooth' }), 50); }}>
           <CircleDashed size={22} strokeWidth={2} color="#D9B24C" />
@@ -504,6 +518,9 @@ export default function App() {
         />
       )}
       {panel === 'nuevo' && <NuevoGasto ambitoNombre={grupo ? `el grupo ${grupo.nombre}` : 'tus gastos personales'} onGuardar={agregar} onCerrar={() => setPanel(null)} />}
+      {panel === 'guias' && grupo?.pagosGuias && (
+        <PagosGuias grupo={grupo} yo={yo} mesInicial={mes} onDatos={aplicar} onCerrar={() => setPanel(null)} />
+      )}
       {panel === 'categorias' && (
         <Categorias titulo={grupo ? `Categorías · ${grupo.nombre}` : 'Categorías'} onGuardar={guardarCat} onBorrar={borrarCat} onCerrar={() => setPanel(null)} />
       )}

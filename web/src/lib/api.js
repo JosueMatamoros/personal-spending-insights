@@ -82,6 +82,8 @@ export const editarCategoria = (id, datos) => llamar('PATCH', `/categorias/${id}
 export const borrarCategoria = (id) => llamar('DELETE', `/categorias/${id}`);
 export const crearGrupo = (datos) => llamar('POST', '/grupos', datos);
 export const editarGrupo = (id, datos) => llamar('PATCH', `/grupos/${id}`, datos);
+export const guiasDelGrupo = (grupoId, mes) => llamar('GET', `/grupos/${grupoId}/guias?mes=${encodeURIComponent(mes)}`);
+export const pagarGuia = (grupoId, slotId, datos) => llamar('PUT', `/grupos/${grupoId}/guias/${slotId}`, datos);
 
 // ── Notificaciones ──
 export const clavePush = () => llamar('GET', '/push/clave');
