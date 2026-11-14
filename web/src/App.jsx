@@ -291,8 +291,12 @@ export default function App() {
     const prev = moverMes(mes, -1);
     // Persona elegida (solo en grupos): todo el reporte muestra solo sus gastos
     const personaSel = grupo && persona && grupo.miembros.some((m) => m.id === persona) ? persona : null;
-    const base = personaSel ? gastos.filter((g) => g.usuarioId === personaSel) : gastos;
-    const delMes = base.filter((g) => mesDeFecha(g.fecha) === mes);
+    // Lo que todavía no pasó (ej. guías de mañana) no se suma: se muestra aparte como "Próximos"
+    const ahora = Date.now();
+    const yaPaso = (g) => new Date(g.fecha).getTime() <= ahora;
+    const base = (personaSel ? gastos.filter((g) => g.usuarioId === personaSel) : gastos);
+    const proximos = base.filter((g) => mesDeFecha(g.fecha) === mes && !yaPaso(g)).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const delMes = base.filter((g) => mesDeFecha(g.fecha) === mes && yaPaso(g));
     // Si es el mes en curso, compara contra los mismos días del mes anterior
     const delPrev = base.filter((g) => mesDeFecha(g.fecha) === prev && (!esMesActual || diaDelMes(g.fecha) <= hoy.getDate()));
     const suma = (l) => l.reduce((s, g) => s + g.monto, 0);
@@ -307,7 +311,7 @@ export default function App() {
     }).filter((c) => c.total > 0).sort((a, b) => b.total - a.total);
 
     // En grupos: cuánto puso cada quien (siempre todas las personas, para poder cambiar)
-    const delMesTodos = gastos.filter((g) => mesDeFecha(g.fecha) === mes);
+    const delMesTodos = gastos.filter((g) => mesDeFecha(g.fecha) === mes && yaPaso(g));
     const totalGrupo = suma(delMesTodos);
     const porPersona = grupo
       ? grupo.miembros.map((m) => ({ ...m, total: suma(delMesTodos.filter((g) => g.usuarioId === m.id)) })).sort((a, b) => b.total - a.total)
@@ -324,7 +328,8 @@ export default function App() {
     });
 
     const pendientes = delMes.filter((g) => g.categoria === POR_CLASIFICAR);
-    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, porPersona, totalGrupo, personaSel, dias, pendientes, cantidad: delMes.length };
+    const proximosVisibles = proximos.filter((g) => !filtro || g.categoria === filtro);
+    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, porPersona, totalGrupo, personaSel, dias, pendientes, proximos: proximosVisibles, cantidad: delMes.length };
   }, [gastos, mes, filtro, grupo, persona]);  
 
   if (!conectado) {
@@ -454,7 +459,7 @@ export default function App() {
         </button>
       )}
 
-      {reporte.cantidad === 0 ? (
+      {reporte.cantidad === 0 && reporte.proximos.length === 0 ? (
         <section className="vacio tarjeta">
           <Sprout size={34} strokeWidth={1.6} color="var(--musgo)" />
           <p>{cargando ? 'Buscando gastos…' : nombrePersona ? `${nombrePersona === 'Tú' ? 'No pagaste' : `${nombrePersona} no pagó`} gastos de este grupo este mes.` : grupo ? 'Todavía no hay gastos en este grupo este mes.' : 'Todavía no hay gastos este mes.'}</p>
@@ -464,44 +469,46 @@ export default function App() {
         </section>
       ) : (
         <>
-          <section className="tarjeta categorias">
-            <h2>Por categoría</h2>
-            <Dona
-              partes={reporte.porCat}
-              total={reporte.total}
-              seleccion={filtro}
-              onSeleccion={setFiltro}
-              centro={filtro ? { valor: colones(totalFiltro), etiqueta: filtro === POR_CLASIFICAR ? 'por clasificar' : filtro.split(' ')[0].toLowerCase() } : { valor: reporte.cantidad, etiqueta: reporte.cantidad === 1 ? 'movimiento' : 'movimientos' }}
-            />
-            <ul className="lista-cat">
-              {reporte.porCat.map((c) => {
-                const info = cat(c.nombre);
-                const pct = Math.round((c.total / reporte.total) * 100);
-                const dif = c.total - c.prev;
-                const activo = filtro === c.nombre;
-                return (
-                  <li key={c.nombre}>
-                    <button className={'fila-cat' + (activo ? ' activo' : '') + (filtro && !activo ? ' apagado' : '')} onClick={() => setFiltro(activo ? null : c.nombre)} style={{ '--c': info.color }}>
-                      <Badge categoria={c.nombre} />
-                      <span className="fila-txt">
-                        <span className="fila-nombre">{c.nombre}</span>
-                        <span className="barra-pct"><span style={{ width: pct + '%' }} /></span>
-                      </span>
-                      <span className="fila-der">
-                        <span className="num">{colones(c.total)}</span>
-                        <span className="pequeno muted">
-                          {pct}%
-                          {reporte.totalPrev > 0 && dif !== 0 && (
-                            <span className={dif > 0 ? 'sube' : 'baja'}> · {dif > 0 ? '▲' : '▼'}{colones(Math.abs(dif))}</span>
-                          )}
+          {reporte.cantidad > 0 && (
+            <section className="tarjeta categorias">
+              <h2>Por categoría</h2>
+              <Dona
+                partes={reporte.porCat}
+                total={reporte.total}
+                seleccion={filtro}
+                onSeleccion={setFiltro}
+                centro={filtro ? { valor: colones(totalFiltro), etiqueta: filtro === POR_CLASIFICAR ? 'por clasificar' : filtro.split(' ')[0].toLowerCase() } : { valor: reporte.cantidad, etiqueta: reporte.cantidad === 1 ? 'movimiento' : 'movimientos' }}
+              />
+              <ul className="lista-cat">
+                {reporte.porCat.map((c) => {
+                  const info = cat(c.nombre);
+                  const pct = Math.round((c.total / reporte.total) * 100);
+                  const dif = c.total - c.prev;
+                  const activo = filtro === c.nombre;
+                  return (
+                    <li key={c.nombre}>
+                      <button className={'fila-cat' + (activo ? ' activo' : '') + (filtro && !activo ? ' apagado' : '')} onClick={() => setFiltro(activo ? null : c.nombre)} style={{ '--c': info.color }}>
+                        <Badge categoria={c.nombre} />
+                        <span className="fila-txt">
+                          <span className="fila-nombre">{c.nombre}</span>
+                          <span className="barra-pct"><span style={{ width: pct + '%' }} /></span>
                         </span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
+                        <span className="fila-der">
+                          <span className="num">{colones(c.total)}</span>
+                          <span className="pequeno muted">
+                            {pct}%
+                            {reporte.totalPrev > 0 && dif !== 0 && (
+                              <span className={dif > 0 ? 'sube' : 'baja'}> · {dif > 0 ? '▲' : '▼'}{colones(Math.abs(dif))}</span>
+                            )}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
 
           <section className="movs">
             <div className="movs-cab">
@@ -511,6 +518,28 @@ export default function App() {
               </h2>
               {filtro && <button className="btn-link" onClick={() => setFiltro(null)}>Ver todos</button>}
             </div>
+            {reporte.proximos.length > 0 && (
+              <div className="dia">
+                <p className="dia-tit">Próximos · todavía no se suman</p>
+                <ul className="tarjeta lista-mov proximos">
+                  {reporte.proximos.map((g) => (
+                    <li key={g.id}>
+                      <button className="mov" onClick={() => setEditando(g.id)}>
+                        <Badge categoria={g.categoria} />
+                        <span className="mov-txt">
+                          <span className="mov-nombre">{nombreComercio(g.comercio)}</span>
+                          <span className="pequeno muted">
+                            {grupo ? (g.usuarioId === yo ? 'Tú' : g.quien) + ' · ' : ''}
+                            {etiquetaDia(g.fecha.slice(0, 10))} · {hora(g.fecha)}
+                          </span>
+                        </span>
+                        <span className="num mov-monto">{colones(g.monto)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {reporte.dias.map((d) => (
               <div key={d.dia} className="dia">
                 <p className="dia-tit">{etiquetaDia(d.dia)}</p>
