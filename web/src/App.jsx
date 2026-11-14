@@ -14,7 +14,7 @@ import { POR_CLASIFICAR, cat, categorias, idDe, normalizarCategoria, setCategori
 import { iconoPorNombre } from './lib/iconos.js';
 import {
   SesionVencida, borrarCategoria, borrarSesion, cambiarCategoria, cerrarSesion, crearCategoria, crearGasto, crearGrupo,
-  editarCategoria, editarGrupo, eliminarGasto, guardarCache, leerCache, leerSesion, moverGasto, obtenerDatos, restaurarGasto, sincronizar,
+  editarCategoria, editarGasto, editarGrupo, eliminarGasto, guardarCache, leerCache, leerSesion, moverGasto, obtenerDatos, restaurarGasto, sincronizar,
 } from './lib/api.js';
 import { K_PREGUNTADO, activarFaceId, faceIdActivo, faceIdDisponible } from './lib/faceid.js';
 import { claveMes, colones, nombreComercio, diaDelMes, etiquetaDia, hora, mesDeFecha, moverMes, nombreMes } from './lib/formato.js';
@@ -214,6 +214,11 @@ export default function App() {
     mostrarAviso(otros > 0 ? `Listo. También moví ${otros} gasto${otros === 1 ? '' : 's'} más de ${nombreComercio(g.comercio)}` : `Movido a ${nombre}`);
   }
 
+  async function editarDetalle(g, cambios) {
+    await hacer(() => editarGasto(g.id, cambios), { lanzar: true });
+    mostrarAviso('Gasto actualizado');
+  }
+
   async function mover(g, grupoId) {
     setEditando(null);
     const destino = grupoId ? datos.grupos.find((x) => x.id === grupoId)?.nombre : 'tus gastos personales';
@@ -394,14 +399,12 @@ export default function App() {
         )}
       </section>
 
-      {grupo?.pagosGuias && (
-        <button className="pendientes tarjeta guias-btn" onClick={() => setPanel('guias')}>
-          <Compass size={22} strokeWidth={2} color={grupo.guiasPendientes ? '#D9B24C' : 'var(--musgo)'} />
+      {grupo?.pagosGuias && grupo.guiasPendientes > 0 && (
+        <button className="pendientes tarjeta" onClick={() => setPanel('guias')}>
+          <Compass size={22} strokeWidth={2} color="#D9B24C" />
           <span>
-            <strong>Guías por tour</strong>
-            <span className="muted pequeno">
-              {grupo.guiasPendientes ? `${grupo.guiasPendientes} guía${grupo.guiasPendientes === 1 ? '' : 's'} sin marcar quién pagó` : 'Todos los guías están al día'}
-            </span>
+            <strong>{grupo.guiasPendientes} guía{grupo.guiasPendientes === 1 ? '' : 's'} sin pagar</strong>
+            <span className="muted pequeno">{colones(grupo.guiasPendientes * 10000)} · toca para marcar quién pagó</span>
           </span>
           <ChevronRight size={18} color="var(--muted)" />
         </button>
@@ -513,13 +516,14 @@ export default function App() {
           puedePersonal={!soloGrupos}
           onElegir={elegirCategoria}
           onMover={mover}
+          onEditar={editarDetalle}
           onEliminar={eliminar}
           onCerrar={() => setEditando(null)}
         />
       )}
       {panel === 'nuevo' && <NuevoGasto ambitoNombre={grupo ? `el grupo ${grupo.nombre}` : 'tus gastos personales'} onGuardar={agregar} onCerrar={() => setPanel(null)} />}
       {panel === 'guias' && grupo?.pagosGuias && (
-        <PagosGuias grupo={grupo} yo={yo} mesInicial={mes} onDatos={aplicar} onCerrar={() => setPanel(null)} />
+        <PagosGuias grupo={grupo} yo={yo} onDatos={aplicar} onCerrar={() => setPanel(null)} />
       )}
       {panel === 'categorias' && (
         <Categorias titulo={grupo ? `Categorías · ${grupo.nombre}` : 'Categorías'} onGuardar={guardarCat} onBorrar={borrarCat} onCerrar={() => setPanel(null)} />

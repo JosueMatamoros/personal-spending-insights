@@ -7,7 +7,7 @@ let sec = 0;
 const nid = (p) => `${p}-${++sec}`;
 
 let categorias = CATEGORIAS_INICIALES.map((c) => ({ id: nid('c'), ...c, dueño: 'personal' }));
-const GRUPO = { id: 'g-tour', nombre: 'Tour a caballo', icono: 'Users', color: '#E0A458', tourId: 2, creadoPor: JOSUE.id };
+const GRUPO = { id: 'g-tour', nombre: 'Tour a caballo', icono: 'Users', color: '#E0A458', tourId: 2, creadoPor: JOSUE.id, pagosGuias: true };
 let grupos = [{ ...GRUPO, miembros: [JOSUE.id, MARIO.id] }];
 [['Alimento caballos', 'Sprout', '#8FB573'], ['Veterinario', 'Stethoscope', '#DE7F72'], ['Equipo', 'Wrench', '#B98668'], ['Otros', 'Shapes', '#9AA396']]
   .forEach(([nombre, icono, color]) => categorias.push({ id: nid('c'), nombre, icono, color, dueño: GRUPO.id }));
@@ -43,6 +43,12 @@ movs.push(
 );
 
 const usuarios = [JOSUE, MARIO];
+// Guías asignados (imita public.slot_guides)
+let guias = [
+  ['2026-11-07', '15:00', 'Dykember'], ['2026-11-09', '15:00', 'Andy'], ['2026-11-10', '08:00', 'Andy'],
+  ['2026-11-10', '12:00', 'Dykember'], ['2026-11-11', '12:00', 'Dykember'],
+].map(([fecha, hora, guia]) => ({ id: nid('s'), fecha, hora, guia, tour: 'Horseback Riding', monto: 10000, pagadoPor: null, noAplica: false }));
+const guiasPendientes = () => guias.filter((x) => !x.pagadoPor && !x.noAplica);
 const nombreDe = (id) => usuarios.find((u) => u.id === id)?.nombre;
 const vista = (m) => ({ ...m, categoria: categorias.find((c) => c.id === m.categoriaId)?.nombre || '', quien: nombreDe(m.usuarioId) });
 const catsDe = (dueño) => categorias.filter((c) => c.dueño === dueño).map(({ dueño: _d, ...c }) => c); // eslint-disable-line no-unused-vars
@@ -56,6 +62,7 @@ function datos(extra = {}) {
     grupos: grupos.map((g) => ({
       ...g, miembros: g.miembros.map((id) => ({ id, nombre: nombreDe(id) })),
       categorias: catsDe(g.id), movimientos: vivos.filter((m) => m.grupoId === g.id).map(vista),
+      ...(g.pagosGuias ? { guiasPendientes: guiasPendientes().length } : {}),
     })),
   };
 }
@@ -78,6 +85,15 @@ export async function demo(metodo, ruta, b = {}) {
   if (recurso === 'datos' || recurso === 'sync') return datos({ nuevos: 0 });
   if (recurso === 'push') falla('Las notificaciones no funcionan en el ejemplo');
 
+  if (recurso === 'grupos' && accion?.startsWith('guias')) {
+    if (metodo === 'PUT') {
+      const s = guias.find((x) => x.id === ruta.split('/')[4]) || falla('Guía no encontrado');
+      Object.assign(s, { pagadoPor: b.pagadoPor, noAplica: !b.pagadoPor && Boolean(b.noAplica) });
+      if (b.pagadoPor) movs.push({ id: nid('m'), fecha: `${s.fecha}T${s.hora}:00`, banco: null, tipo: 'Guía', comercio: `Guía ${s.guia} · ${s.tour} ${s.hora}`, monto: 10000, moneda: 'CRC', montoOriginal: 10000, categoriaId: null, usuarioId: b.pagadoPor, grupoId: id, origen: 'manual', eliminado: false });
+    }
+    return datos({ precio: 10000, guias: guiasPendientes() });
+  }
+
   if (recurso === 'movimientos') {
     if (metodo === 'POST' && !id) {
       movs.push({ id: nid('m'), fecha: b.fecha || new Date().toISOString().slice(0, 19), banco: null, tipo: 'Manual', comercio: b.comercio, monto: b.monto, moneda: 'CRC', montoOriginal: b.monto, categoriaId: b.categoriaId || null, usuarioId: JOSUE.id, grupoId: b.grupoId || null, origen: 'manual', eliminado: false, nota: b.nota });
@@ -89,6 +105,7 @@ export async function demo(metodo, ruta, b = {}) {
       movs = movs.map((x) => (x.id === id || (x.comercio === m.comercio && x.grupoId === m.grupoId && !/sin descripci/i.test(m.comercio)) ? (actualizados++, { ...x, categoriaId: b.categoriaId }) : x));
       return datos({ actualizados });
     }
+    if (metodo === 'PATCH' && !accion) { m.comercio = b.comercio; m.monto = b.monto; m.montoOriginal = b.monto; return datos(); }
     if (accion === 'mover') { m.grupoId = b.grupoId; m.categoriaId = null; return datos(); }
     if (accion === 'restaurar') { m.eliminado = false; return datos(); }
     if (metodo === 'DELETE') { m.eliminado = true; return datos(); }

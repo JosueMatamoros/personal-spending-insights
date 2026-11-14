@@ -1,40 +1,41 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Compass } from 'lucide-react';
+import { Check, ChevronDown, PartyPopper, X } from 'lucide-react';
 import { guiasDelGrupo, pagarGuia } from '../lib/api.js';
-import { claveMes, colones, etiquetaDia, moverMes, nombreMes } from '../lib/formato.js';
+import { colones, etiquetaDia } from '../lib/formato.js';
 
-const MES_INICIO = '2026-11';
+const NO_SE_PAGA = 'no';
 
 /**
- * Guías asignados a cada tour (vienen del sistema de tours) y quién le pagó a cada uno.
- * Al elegir quién pagó se crea el gasto en la categoría Guías del grupo.
+ * Guías que todavía no se han pagado (tours de hoy para atrás). Se elige quién
+ * pagó (Andrés por defecto) y al confirmar se anota el gasto en Guías.
  */
-export default function PagosGuias({ grupo, yo, mesInicial, onDatos, onCerrar }) {
-  const [mes, setMes] = useState(mesInicial < MES_INICIO ? MES_INICIO : mesInicial);
+export default function PagosGuias({ grupo, yo, onDatos, onCerrar }) {
+  const andres = grupo.miembros.find((m) => /andr[eé]s/i.test(m.nombre)) || grupo.miembros[0];
   const [lista, setLista] = useState(null);
-  const [precio, setPrecio] = useState(10000);
-  const [guardando, setGuardando] = useState(null); // id de la fila que se guarda
+  const [eleccion, setEleccion] = useState({}); // slotId → usuarioId | 'no'
+  const [guardando, setGuardando] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let vivo = true;
-    setLista(null);
-    setError('');
-    guiasDelGrupo(grupo.id, mes)
-      .then((r) => { if (vivo) { setLista(r.guias); setPrecio(r.precio); } })
+    guiasDelGrupo(grupo.id)
+      .then((r) => vivo && setLista(r.guias))
       .catch((e) => vivo && setError(e.message));
     return () => { vivo = false; };
-  }, [grupo.id, mes]);
+  }, [grupo.id]);
 
-  async function elegir(fila, pagadoPor, noAplica = false) {
-    const igual = noAplica ? fila.noAplica && !fila.pagadoPor : fila.pagadoPor === pagadoPor;
-    setGuardando(fila.id);
+  useEffect(() => {
+    const esc = (e) => e.key === 'Escape' && onCerrar();
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onCerrar]);
+
+  async function confirmar(f) {
+    const quien = eleccion[f.id] || andres?.id;
+    setGuardando(f.id);
     setError('');
     try {
-      // Tocar la opción ya elegida la desmarca (vuelve a pendiente)
-      const r = igual
-        ? await pagarGuia(grupo.id, fila.id, { pagadoPor: null, noAplica: false, mes })
-        : await pagarGuia(grupo.id, fila.id, { pagadoPor, noAplica, mes });
+      const r = await pagarGuia(grupo.id, f.id, quien === NO_SE_PAGA ? { pagadoPor: null, noAplica: true } : { pagadoPor: quien });
       setLista(r.guias);
       onDatos(r);
     } catch (e) {
@@ -44,63 +45,64 @@ export default function PagosGuias({ grupo, yo, mesInicial, onDatos, onCerrar })
     }
   }
 
-  const ahora = new Date();
-  const hoy = `${claveMes(ahora)}-${String(ahora.getDate()).padStart(2, '0')}`;
-  const pagados = (lista || []).filter((f) => f.pagadoPor);
-  const pendientes = (lista || []).filter((f) => !f.pagadoPor && !f.noAplica && f.fecha <= hoy);
-  const actual = claveMes(ahora);
   const dias = [];
   for (const f of lista || []) {
     const d = dias[dias.length - 1];
     if (d?.dia === f.fecha) d.items.push(f); else dias.push({ dia: f.fecha, items: [f] });
   }
+  const total = (lista || []).reduce((t, f) => t + f.monto, 0);
 
   return (
     <div className="velo" onClick={onCerrar}>
-      <section className="hoja hoja-alta" role="dialog" aria-label="Guías por tour" onClick={(e) => e.stopPropagation()}>
-        <div className="hoja-asa" />
-        <h2 className="ajustes-tit tit-icono"><Compass size={20} strokeWidth={2} color="var(--musgo)" /> Guías por tour</h2>
-        <p className="muted pequeno">Cada guía asignado en el sistema de tours cuesta {colones(precio)}. Elige quién le pagó y se anota como gasto en Guías.</p>
+      <section className="hoja hoja-alta" role="dialog" aria-label="Guías sin pagar" onClick={(e) => e.stopPropagation()}>
+        <header className="guias-cab">
+          <div>
+            <h2>Guías sin pagar</h2>
+            {lista && lista.length > 0 && (
+              <p className="muted pequeno">{lista.length} guía{lista.length === 1 ? '' : 's'} · <strong className="num">{colones(total)}</strong></p>
+            )}
+          </div>
+          <button className="icono cerrar" onClick={onCerrar} aria-label="Cerrar"><X size={22} strokeWidth={2.2} /></button>
+        </header>
 
-        <nav className="mes mes-hoja">
-          <button className="icono" disabled={mes <= MES_INICIO} onClick={() => setMes(moverMes(mes, -1))} aria-label="Mes anterior"><ChevronLeft size={20} /></button>
-          <h3>{nombreMes(mes)}</h3>
-          <button className="icono" disabled={mes >= actual} onClick={() => setMes(moverMes(mes, 1))} aria-label="Mes siguiente"><ChevronRight size={20} /></button>
-        </nav>
-
-        {lista && lista.length > 0 && (
-          <p className="guias-resumen">
-            <span><strong className="num">{colones(pagados.reduce((t, f) => t + f.monto, 0))}</strong> pagado</span>
-            {pendientes.length > 0 && <span className="pendiente">{pendientes.length} sin pagar · {colones(pendientes.length * precio)}</span>}
-          </p>
-        )}
         {error && <p className="error">{error}</p>}
         {!lista && !error && <p className="muted">Cargando…</p>}
-        {lista && lista.length === 0 && <p className="muted">No hay guías asignados en {nombreMes(mes, false).toLowerCase()}.</p>}
+        {lista && lista.length === 0 && (
+          <div className="guias-listo">
+            <PartyPopper size={34} strokeWidth={1.6} color="var(--musgo)" />
+            <p>Todos los guías están pagados.</p>
+          </div>
+        )}
 
         {dias.map((d) => (
-          <div key={d.dia} className="dia">
+          <div key={d.dia} className="guias-dia">
             <p className="dia-tit">{etiquetaDia(d.dia)}</p>
-            <ul className="tarjeta lista-guias">
+            <ul className="guias-lista">
               {d.items.map((f) => {
-                const falta = !f.pagadoPor && !f.noAplica && f.fecha <= hoy;
+                const quien = eleccion[f.id] || andres?.id;
                 return (
-                  <li key={f.id} className={falta ? 'falta' : ''}>
-                    <div className="guia-cab">
-                      <span>
+                  <li key={f.id} className="guia tarjeta">
+                    <div className="guia-info">
+                      <span className="guia-hora num">{f.hora}</span>
+                      <span className="guia-txt">
                         <strong>{f.guia}</strong>
-                        <span className="muted pequeno"> · {f.tour} {f.hora}</span>
+                        <span className="muted pequeno">{f.tour}</span>
                       </span>
-                      <span className="num">{colones(f.monto)}</span>
+                      <span className="num guia-monto">{colones(f.monto)}</span>
                     </div>
-                    <div className="guia-ops" aria-busy={guardando === f.id}>
-                      {grupo.miembros.map((m) => (
-                        <button key={m.id} className={'opcion' + (f.pagadoPor === m.id ? ' activo' : '')} disabled={guardando === f.id} onClick={() => elegir(f, m.id)}>
-                          {m.id === yo ? 'Yo' : m.nombre}
-                        </button>
-                      ))}
-                      <button className={'opcion tenue' + (f.noAplica && !f.pagadoPor ? ' activo' : '')} disabled={guardando === f.id} onClick={() => elegir(f, null, true)}>
-                        No se paga
+                    <div className="guia-pago">
+                      <label className="selector">
+                        <span className="muted pequeno">Pagó</span>
+                        <select value={quien} onChange={(e) => setEleccion({ ...eleccion, [f.id]: e.target.value })} disabled={guardando === f.id}>
+                          {grupo.miembros.map((m) => (
+                            <option key={m.id} value={m.id}>{m.nombre}{m.id === yo ? ' (yo)' : ''}</option>
+                          ))}
+                          <option value={NO_SE_PAGA}>No se paga</option>
+                        </select>
+                        <ChevronDown size={16} className="selector-flecha" />
+                      </label>
+                      <button className="btn-primario guia-ok" disabled={guardando === f.id} onClick={() => confirmar(f)}>
+                        <Check size={17} strokeWidth={2.6} /> {guardando === f.id ? 'Guardando…' : quien === NO_SE_PAGA ? 'Listo' : 'Pagado'}
                       </button>
                     </div>
                   </li>

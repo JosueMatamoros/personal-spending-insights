@@ -74,6 +74,7 @@ export const obtenerDatos = () => llamar('GET', '/datos');
 export const sincronizar = () => llamar('POST', '/sync', {});
 export const cambiarCategoria = (id, categoriaId) => llamar('PATCH', `/movimientos/${id}/categoria`, { categoriaId });
 export const moverGasto = (id, grupoId) => llamar('POST', `/movimientos/${id}/mover`, { grupoId });
+export const editarGasto = (id, datos) => llamar('PATCH', `/movimientos/${id}`, datos);
 export const eliminarGasto = (id) => llamar('DELETE', `/movimientos/${id}`);
 export const restaurarGasto = (id) => llamar('POST', `/movimientos/${id}/restaurar`, {});
 export const crearGasto = (datos) => llamar('POST', '/movimientos', datos);

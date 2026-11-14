@@ -342,3 +342,27 @@ input, select, textarea { font-size: max(16px, 1em); }
 .opcion.tenue { color: var(--muted); }
 .opcion.tenue.activo { color: inherit; border-color: var(--muted); background: var(--superficie-2); }
 .opcion:disabled { opacity: 0.55; }
+.guias-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.guias-cab h2 { font-size: 1.2rem; }
+.guias-cab p { margin-top: 3px; }
+.cerrar { background: var(--superficie-2); flex: none; }
+.guias-listo { text-align: center; padding: 28px 0 12px; display: grid; gap: 10px; justify-items: center; }
+.guias-dia + .guias-dia { margin-top: 16px; }
+.guias-lista { display: grid; gap: 10px; }
+.guia { padding: 14px; display: grid; gap: 12px; }
+.guia-info { display: flex; align-items: center; gap: 12px; }
+.guia-hora { flex: none; padding: 6px 9px; border-radius: 10px; background: var(--musgo-suave); color: var(--musgo); font-weight: 700; font-size: 0.85rem; }
+.guia-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.guia-txt strong { font-size: 1rem; }
+.guia-monto { font-weight: 700; }
+.guia-pago { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.selector { position: relative; display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 36px 0 12px; border-radius: 12px; border: 1px solid var(--borde); background: var(--superficie-2); }
+.selector select { flex: 1; min-width: 0; appearance: none; -webkit-appearance: none; background: none; border: 0; color: var(--texto); font: inherit; font-size: 16px; font-weight: 600; color-scheme: dark; }
+.selector select:focus { outline: none; }
+.selector:focus-within { border-color: var(--musgo-fuerte); }
+.selector-flecha { position: absolute; right: 12px; pointer-events: none; color: var(--muted); }
+.guia-ok { height: 46px; padding: 0 16px; display: inline-flex; align-items: center; gap: 6px; border-radius: 12px; }
+.tit-editar { display: flex; align-items: center; gap: 6px; }
+.lapiz { width: 30px; height: 30px; color: var(--muted); }
+.campos-uno { grid-template-columns: 1fr; }
+.editar-gasto { margin-bottom: 4px; }
