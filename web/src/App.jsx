@@ -40,6 +40,7 @@ export default function App() {
     return actual < MES_INICIO ? MES_INICIO : actual;
   });
   const [filtro, setFiltro] = useState(null);
+  const [persona, setPersona] = useState(null); // en grupos: ver solo los gastos de una persona
   const [editando, setEditando] = useState(null);
   const [panel, setPanel] = useState(null); // ajustes | categorias | nuevo | grupo-nuevo | grupo-editar | faceid | guias
   const [cargando, setCargando] = useState(false);
@@ -64,6 +65,7 @@ export default function App() {
   function setAmbito(a) {
     setAmbitoEstado(a);
     setFiltro(null);
+    setPersona(null);
     try { localStorage.setItem(K_AMBITO, a); } catch { /* nada */ }
   }
 
@@ -287,9 +289,12 @@ export default function App() {
     const hoy = new Date();
     const esMesActual = mes === claveMes(hoy);
     const prev = moverMes(mes, -1);
-    const delMes = gastos.filter((g) => mesDeFecha(g.fecha) === mes);
+    // Persona elegida (solo en grupos): todo el reporte muestra solo sus gastos
+    const personaSel = grupo && persona && grupo.miembros.some((m) => m.id === persona) ? persona : null;
+    const base = personaSel ? gastos.filter((g) => g.usuarioId === personaSel) : gastos;
+    const delMes = base.filter((g) => mesDeFecha(g.fecha) === mes);
     // Si es el mes en curso, compara contra los mismos días del mes anterior
-    const delPrev = gastos.filter((g) => mesDeFecha(g.fecha) === prev && (!esMesActual || diaDelMes(g.fecha) <= hoy.getDate()));
+    const delPrev = base.filter((g) => mesDeFecha(g.fecha) === prev && (!esMesActual || diaDelMes(g.fecha) <= hoy.getDate()));
     const suma = (l) => l.reduce((s, g) => s + g.monto, 0);
     const total = suma(delMes);
     const totalPrev = suma(delPrev);
@@ -301,9 +306,11 @@ export default function App() {
       return { nombre: c.nombre, total: t, prev: tp, cantidad: delMes.filter((g) => g.categoria === c.nombre).length };
     }).filter((c) => c.total > 0).sort((a, b) => b.total - a.total);
 
-    // En grupos: cuánto puso cada quien
+    // En grupos: cuánto puso cada quien (siempre todas las personas, para poder cambiar)
+    const delMesTodos = gastos.filter((g) => mesDeFecha(g.fecha) === mes);
+    const totalGrupo = suma(delMesTodos);
     const porPersona = grupo
-      ? grupo.miembros.map((m) => ({ ...m, total: suma(delMes.filter((g) => g.usuarioId === m.id)) })).sort((a, b) => b.total - a.total)
+      ? grupo.miembros.map((m) => ({ ...m, total: suma(delMesTodos.filter((g) => g.usuarioId === m.id)) })).sort((a, b) => b.total - a.total)
       : [];
 
     const movimientos = delMes
@@ -317,8 +324,8 @@ export default function App() {
     });
 
     const pendientes = delMes.filter((g) => g.categoria === POR_CLASIFICAR);
-    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, porPersona, dias, pendientes, cantidad: delMes.length };
-  }, [gastos, mes, filtro, grupo]);  
+    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, porPersona, totalGrupo, personaSel, dias, pendientes, cantidad: delMes.length };
+  }, [gastos, mes, filtro, grupo, persona]);  
 
   if (!conectado) {
     return <Acceso onEntrar={entrar} />;
@@ -333,6 +340,12 @@ export default function App() {
   const cambio = reporte.totalPrev > 0 ? (reporte.total - reporte.totalPrev) / reporte.totalPrev : null;
   const totalFiltro = filtro ? reporte.porCat.find((c) => c.nombre === filtro)?.total || 0 : null;
   const gastoEditando = editando ? gastos.find((g) => g.id === editando) : null;
+  const personaInfo = reporte.personaSel ? grupo?.miembros.find((m) => m.id === reporte.personaSel) : null;
+  const nombrePersona = personaInfo ? (personaInfo.id === yo ? 'Tú' : personaInfo.nombre) : null;
+  function elegirPersona(id) {
+    setPersona((p) => (p === id ? null : id));
+    setFiltro(null);
+  }
 
   return (
     <div className="app">
@@ -379,7 +392,7 @@ export default function App() {
       </nav>
 
       <section className="total tarjeta">
-        <p className="muted">{grupo ? `Gastado en ${grupo.nombre}` : 'Total gastado'}</p>
+        <p className="muted">{personaInfo ? `${personaInfo.id === yo ? 'Pagado por ti' : `Pagado por ${personaInfo.nombre}`} en ${grupo.nombre}` : grupo ? `Gastado en ${grupo.nombre}` : 'Total gastado'}</p>
         <p className="total-num num">{colones(reporte.total)}</p>
         {cambio !== null ? (
           <p className={'cambio ' + (cambio > 0 ? 'sube' : 'baja')}>
@@ -392,15 +405,29 @@ export default function App() {
         ) : (
           <p className="muted pequeno">{reporte.hayPrev ? `Sin gastos en ${nombreMes(reporte.prev, false).toLowerCase()} para comparar` : 'Primer mes registrado · el próximo mes verás la comparación'}</p>
         )}
-        {grupo && reporte.total > 0 && (
-          <ul className="personas">
-            {reporte.porPersona.map((p) => (
-              <li key={p.id}>
-                <span className="avatar">{p.nombre.slice(0, 1)}</span>
-                <span className="persona-nombre">{p.id === yo ? 'Tú' : p.nombre}</span>
-                <span className="num">{colones(p.total)}</span>
-              </li>
-            ))}
+        {grupo && reporte.totalGrupo > 0 && (
+          <ul className="personas" aria-label="Filtrar por persona">
+            {reporte.porPersona.map((p) => {
+              const activo = reporte.personaSel === p.id;
+              return (
+                <li key={p.id}>
+                  <button
+                    className={'persona' + (activo ? ' activo' : '') + (reporte.personaSel && !activo ? ' apagado' : '')}
+                    onClick={() => elegirPersona(p.id)}
+                    aria-pressed={activo}
+                  >
+                    <span className="avatar">{p.nombre.slice(0, 1)}</span>
+                    <span className="persona-nombre">{p.id === yo ? 'Tú' : p.nombre}</span>
+                    <span className="num">{colones(p.total)}</span>
+                  </button>
+                </li>
+              );
+            })}
+            <li className="personas-ayuda pequeno muted">
+              {reporte.personaSel
+                ? <>Viendo solo lo de {nombrePersona === 'Tú' ? 'ti' : nombrePersona} · <button className="btn-link" onClick={() => setPersona(null)}>Ver todos</button></>
+                : 'Toca una persona para ver solo sus gastos'}
+            </li>
           </ul>
         )}
       </section>
@@ -430,7 +457,7 @@ export default function App() {
       {reporte.cantidad === 0 ? (
         <section className="vacio tarjeta">
           <Sprout size={34} strokeWidth={1.6} color="var(--musgo)" />
-          <p>{cargando ? 'Buscando gastos…' : grupo ? 'Todavía no hay gastos en este grupo este mes.' : 'Todavía no hay gastos este mes.'}</p>
+          <p>{cargando ? 'Buscando gastos…' : nombrePersona ? `${nombrePersona === 'Tú' ? 'No pagaste' : `${nombrePersona} no pagó`} gastos de este grupo este mes.` : grupo ? 'Todavía no hay gastos en este grupo este mes.' : 'Todavía no hay gastos este mes.'}</p>
           {!cargando && (grupo
             ? <button className="btn-sec" onClick={() => setPanel('nuevo')}>Agregar un gasto</button>
             : <button className="btn-sec" onClick={refrescar}>Buscar en el correo</button>)}
@@ -478,7 +505,10 @@ export default function App() {
 
           <section className="movs">
             <div className="movs-cab">
-              <h2 className="tit-icono">{filtro ? <><Badge categoria={filtro} size={15} className="mini-badge" />{filtro}</> : 'Movimientos'}</h2>
+              <h2 className="tit-icono">
+                {filtro ? <><Badge categoria={filtro} size={15} className="mini-badge" />{filtro}</> : 'Movimientos'}
+                {nombrePersona && <span className="chip-persona">{nombrePersona}</span>}
+              </h2>
               {filtro && <button className="btn-link" onClick={() => setFiltro(null)}>Ver todos</button>}
             </div>
             {reporte.dias.map((d) => (
