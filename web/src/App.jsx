@@ -47,7 +47,10 @@ export default function App() {
   const yo = datos.usuario?.id || sesion?.usuario?.id;
 
   // ── Ámbito actual: personal o un grupo ──
-  const grupo = ambito === PERSONAL ? null : datos.grupos.find((g) => g.id === ambito) || null;
+  // Cuentas "solo grupos" (ej. Mario Andrés): sin Personal y sin crear grupos
+  const soloGrupos = Boolean(datos.usuario?.soloGrupos);
+  const ambitoReal = soloGrupos && !datos.grupos.some((g) => g.id === ambito) ? datos.grupos[0]?.id || PERSONAL : ambito;
+  const grupo = ambitoReal === PERSONAL ? null : datos.grupos.find((g) => g.id === ambitoReal) || null;
   const scope = grupo || datos.personal;
   const nombreAmbito = grupo ? grupo.nombre : 'Personal';
   // Las categorías activas son las del ámbito (las usan Badge, Dona, las hojas…)
@@ -63,10 +66,11 @@ export default function App() {
     try { localStorage.setItem(K_AMBITO, a); } catch { /* nada */ }
   }
 
-  // Si el grupo guardado ya no existe, vuelve a personal
+  // Si el grupo guardado ya no existe, vuelve a personal (o al primer grupo si la cuenta es solo de grupos)
   useEffect(() => {
-    if (ambito !== PERSONAL && datos.usuario && !datos.grupos.some((g) => g.id === ambito)) setAmbito(PERSONAL);
-  }, [datos, ambito]);
+    if (ambitoReal !== ambito) setAmbito(ambitoReal);
+    else if (ambito !== PERSONAL && datos.usuario && !datos.grupos.some((g) => g.id === ambito)) setAmbito(PERSONAL);
+  }, [datos, ambito, ambitoReal]);
 
   const aplicar = useCallback((d) => {
     if (!d?.personal) return;
@@ -336,9 +340,11 @@ export default function App() {
       </header>
 
       <nav className="ambitos" aria-label="Personal o grupos">
-        <button className={'ambito' + (!grupo ? ' activo' : '')} onClick={() => setAmbito(PERSONAL)}>
-          <UserRound size={16} strokeWidth={2} /> Personal
-        </button>
+        {!soloGrupos && (
+          <button className={'ambito' + (!grupo ? ' activo' : '')} onClick={() => setAmbito(PERSONAL)}>
+            <UserRound size={16} strokeWidth={2} /> Personal
+          </button>
+        )}
         {datos.grupos.map((g) => {
           const I = iconoPorNombre(g.icono);
           return (
@@ -347,9 +353,11 @@ export default function App() {
             </button>
           );
         })}
-        <button className="ambito nuevo" onClick={() => setPanel('grupo-nuevo')} aria-label="Crear grupo">
-          <Plus size={16} strokeWidth={2.2} /> Grupo
-        </button>
+        {!soloGrupos && (
+          <button className="ambito nuevo" onClick={() => setPanel('grupo-nuevo')} aria-label="Crear grupo">
+            <Plus size={16} strokeWidth={2.2} /> Grupo
+          </button>
+        )}
       </nav>
 
       <nav className="mes">
@@ -488,6 +496,7 @@ export default function App() {
           yo={yo}
           grupos={datos.grupos}
           enGrupo={Boolean(grupo)}
+          puedePersonal={!soloGrupos}
           onElegir={elegirCategoria}
           onMover={mover}
           onEliminar={eliminar}

@@ -8,7 +8,7 @@ import { colones, etiquetaDia, hora, nombreComercio } from '../lib/formato.js';
  * Panel inferior de un gasto: cambiar categoría, mandarlo a un grupo (o
  * devolverlo a personal) y eliminarlo.
  */
-export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, onElegir, onMover, onEliminar, onCerrar }) {
+export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, puedePersonal = true, onElegir, onMover, onEliminar, onCerrar }) {
   const mio = gasto.usuarioId === yo;
   const [confirmar, setConfirmar] = useState(false);
 
@@ -69,7 +69,7 @@ export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, onElegi
             <p className="muted pequeno">Sale de tus gastos personales y cuenta en el grupo.</p>
           </>
         )}
-        {mio && enGrupo && (
+        {mio && enGrupo && puedePersonal && (
           <button className="btn-sec btn-ancho" style={{ marginTop: 16 }} onClick={() => onMover(gasto, null)}>
             <ArrowLeftRight size={17} strokeWidth={2} /> Devolver a mis gastos personales
           </button>
