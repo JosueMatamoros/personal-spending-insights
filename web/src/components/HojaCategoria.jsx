@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeftRight, CalendarDays, CreditCard, HandCoins, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, CalendarDays, CreditCard, HandCoins, Landmark, Pencil, Trash2 } from 'lucide-react';
 import Badge from './Badge.jsx';
 import { iconoPorNombre } from '../lib/iconos.js';
 import { categorias } from '../lib/categorias.js';
@@ -21,8 +21,9 @@ export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, miembro
   const titulo = corte > 0 ? nombre.slice(0, corte) : nombre;
   const subtitulo = corte > 0 ? nombre.slice(corte + 3) : '';
 
+  const pagoActual = gasto.caja ? 'caja' : gasto.usuarioId;
   async function cambiarPagador(id) {
-    if (id === gasto.usuarioId) return;
+    if (id === pagoActual) return;
     setCambiando(true);
     try { await onEditar(gasto, { pagadoPor: id }); } catch { /* el aviso ya lo muestra la app */ } finally { setCambiando(false); }
   }
@@ -68,14 +69,14 @@ export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, miembro
           <>
             <p className="hoja-tit">Quién pagó</p>
             <div className="pagadores">
-              {(editable ? miembros : miembros.filter((m) => m.id === gasto.usuarioId)).map((m) => (
+              {(editable ? miembros : miembros.filter((m) => m.id === pagoActual)).map((m) => (
                 <button
                   key={m.id}
-                  className={'pagador' + (m.id === gasto.usuarioId ? ' activo' : '')}
+                  className={'pagador' + (m.id === pagoActual ? ' activo' : '') + (m.id === 'caja' ? ' pagador-caja' : '')}
                   disabled={!editable || cambiando}
                   onClick={() => cambiarPagador(m.id)}
                 >
-                  <span className="avatar">{m.nombre.slice(0, 1)}</span>
+                  <span className="avatar">{m.id === 'caja' ? <Landmark size={15} strokeWidth={2.2} /> : m.nombre.slice(0, 1)}</span>
                   <span className="pagador-nombre">{m.id === yo ? 'Yo' : m.nombre}</span>
                 </button>
               ))}

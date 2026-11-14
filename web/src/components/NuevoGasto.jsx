@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Landmark } from 'lucide-react';
 import { categorias } from '../lib/categorias.js';
 
 const hoy = () => {
@@ -7,7 +8,8 @@ const hoy = () => {
 };
 
 /** Agregar un gasto a mano (efectivo, algo de otra tarjeta, gasto del grupo…). */
-export default function NuevoGasto({ ambitoNombre, onGuardar, onCerrar }) {
+export default function NuevoGasto({ ambitoNombre, pagadores = null, yo, onGuardar, onCerrar }) {
+  const [pagadoPor, setPagadoPor] = useState(yo);
   const [monto, setMonto] = useState('');
   const [comercio, setComercio] = useState('');
   const [fecha, setFecha] = useState(hoy);
@@ -26,7 +28,7 @@ export default function NuevoGasto({ ambitoNombre, onGuardar, onCerrar }) {
       // Si es hoy, guarda la hora actual; si es otro día, al mediodía
       const ahora = new Date();
       const f = fecha === hoy() ? ahora : new Date(`${fecha}T12:00:00`);
-      await onGuardar({ monto: n, comercio: comercio.trim(), fecha: f.toISOString(), categoriaId: categoria?.id || null });
+      await onGuardar({ monto: n, comercio: comercio.trim(), fecha: f.toISOString(), categoriaId: categoria?.id || null, ...(pagadores ? { pagadoPor } : {}) });
     } catch (err) {
       setError(err.message);
       setGuardando(false);
@@ -48,6 +50,20 @@ export default function NuevoGasto({ ambitoNombre, onGuardar, onCerrar }) {
           <input value={comercio} onChange={(e) => setComercio(e.target.value)} placeholder="Descripción" aria-label="Descripción" maxLength={120} />
           <input type="date" value={fecha} min="2026-11-01" max={hoy()} onChange={(e) => setFecha(e.target.value)} aria-label="Fecha" />
         </div>
+
+        {pagadores && (
+          <>
+            <p className="hoja-tit">Quién pagó</p>
+            <div className="pagadores">
+              {pagadores.map((m) => (
+                <button type="button" key={m.id} className={'pagador' + (m.id === pagadoPor ? ' activo' : '') + (m.id === 'caja' ? ' pagador-caja' : '')} onClick={() => setPagadoPor(m.id)}>
+                  <span className="avatar">{m.id === 'caja' ? <Landmark size={15} strokeWidth={2.2} /> : m.nombre.slice(0, 1)}</span>
+                  <span className="pagador-nombre">{m.id === yo ? 'Yo' : m.nombre}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         <p className="hoja-tit">Categoría</p>
         <div className="hoja-grid">

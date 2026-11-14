@@ -9,7 +9,7 @@ import Grupo from './components/Grupo.jsx';
 import HojaCategoria from './components/HojaCategoria.jsx';
 import NuevoGasto from './components/NuevoGasto.jsx';
 import PagosGuias from './components/PagosGuias.jsx';
-import { ChevronLeft, ChevronRight, CircleDashed, Compass, Plus, RefreshCw, ScanFace, Settings, Sprout, UserRound } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleDashed, Compass, Landmark, Plus, RefreshCw, ScanFace, Settings, Sprout, UserRound } from 'lucide-react';
 import { POR_CLASIFICAR, cat, categorias, idDe, normalizarCategoria, setCategorias } from './lib/categorias.js';
 import { iconoPorNombre } from './lib/iconos.js';
 import {
@@ -23,6 +23,10 @@ const MES_INICIO = '2026-11';
 const RE_BLOQUEO_MS = 2 * 60 * 1000; // vuelve a pedir Face ID si la app estuvo cerrada 2 min
 const K_AMBITO = 'misgastos.ambito';
 const PERSONAL = 'personal';
+// En grupos, "quién pagó" puede ser una persona o la empresa (caja chica)
+const CAJA = 'caja';
+const pagadorDe = (g) => (g.caja ? CAJA : g.usuarioId);
+const pagadoresDe = (grupo) => [...grupo.miembros, { id: CAJA, nombre: 'Caja chica' }];
 
 const VACIO = { usuario: null, usuarios: [], personal: { categorias: [], movimientos: [] }, grupos: [] };
 
@@ -220,7 +224,7 @@ export default function App() {
     if (cambios.pagadoPor) { // cambiar quién pagó: muestra el error como aviso
       const d = await hacer(() => editarGasto(g.id, cambios), { error: 'No se pudo cambiar' });
       const quien = datos.usuarios.find((u) => u.id === cambios.pagadoPor);
-      if (d) mostrarAviso(cambios.pagadoPor === yo ? 'Ahora lo pagaste tú' : `Ahora lo pagó ${quien?.nombre || 'otra persona'}`);
+      if (d) mostrarAviso(cambios.pagadoPor === CAJA ? 'Ahora lo pagó la caja chica' : cambios.pagadoPor === yo ? 'Ahora lo pagaste tú' : `Ahora lo pagó ${quien?.nombre || 'otra persona'}`);
       return;
     }
     await hacer(() => editarGasto(g.id, cambios), { lanzar: true });
@@ -290,11 +294,11 @@ export default function App() {
     const esMesActual = mes === claveMes(hoy);
     const prev = moverMes(mes, -1);
     // Persona elegida (solo en grupos): todo el reporte muestra solo sus gastos
-    const personaSel = grupo && persona && grupo.miembros.some((m) => m.id === persona) ? persona : null;
+    const personaSel = grupo && persona && pagadoresDe(grupo).some((m) => m.id === persona) ? persona : null;
     // Lo que todavía no pasó (ej. guías de mañana) no se suma: se muestra aparte como "Próximos"
     const ahora = Date.now();
     const yaPaso = (g) => new Date(g.fecha).getTime() <= ahora;
-    const base = (personaSel ? gastos.filter((g) => g.usuarioId === personaSel) : gastos);
+    const base = (personaSel ? gastos.filter((g) => pagadorDe(g) === personaSel) : gastos);
     const proximos = base.filter((g) => mesDeFecha(g.fecha) === mes && !yaPaso(g)).sort((a, b) => a.fecha.localeCompare(b.fecha));
     const delMes = base.filter((g) => mesDeFecha(g.fecha) === mes && yaPaso(g));
     // Si es el mes en curso, compara contra los mismos días del mes anterior
@@ -314,7 +318,8 @@ export default function App() {
     const delMesTodos = gastos.filter((g) => mesDeFecha(g.fecha) === mes && yaPaso(g));
     const totalGrupo = suma(delMesTodos);
     const porPersona = grupo
-      ? grupo.miembros.map((m) => ({ ...m, total: suma(delMesTodos.filter((g) => g.usuarioId === m.id)) })).sort((a, b) => b.total - a.total)
+      ? pagadoresDe(grupo).map((m) => ({ ...m, total: suma(delMesTodos.filter((g) => pagadorDe(g) === m.id)) }))
+        .filter((m) => m.id !== CAJA || m.total > 0).sort((a, b) => b.total - a.total)
       : [];
 
     const movimientos = delMes
@@ -345,7 +350,7 @@ export default function App() {
   const cambio = reporte.totalPrev > 0 ? (reporte.total - reporte.totalPrev) / reporte.totalPrev : null;
   const totalFiltro = filtro ? reporte.porCat.find((c) => c.nombre === filtro)?.total || 0 : null;
   const gastoEditando = editando ? gastos.find((g) => g.id === editando) : null;
-  const personaInfo = reporte.personaSel ? grupo?.miembros.find((m) => m.id === reporte.personaSel) : null;
+  const personaInfo = reporte.personaSel && grupo ? pagadoresDe(grupo).find((m) => m.id === reporte.personaSel) : null;
   const nombrePersona = personaInfo ? (personaInfo.id === yo ? 'Tú' : personaInfo.nombre) : null;
   function elegirPersona(id) {
     setPersona((p) => (p === id ? null : id));
@@ -421,7 +426,7 @@ export default function App() {
                     onClick={() => elegirPersona(p.id)}
                     aria-pressed={activo}
                   >
-                    <span className="avatar">{p.nombre.slice(0, 1)}</span>
+                    <span className={'avatar' + (p.id === CAJA ? ' avatar-caja' : '')}>{p.id === CAJA ? <Landmark size={15} strokeWidth={2.2} /> : p.nombre.slice(0, 1)}</span>
                     <span className="persona-nombre">{p.id === yo ? 'Tú' : p.nombre}</span>
                     <span className="num">{colones(p.total)}</span>
                   </button>
@@ -529,7 +534,7 @@ export default function App() {
                         <span className="mov-txt">
                           <span className="mov-nombre">{nombreComercio(g.comercio)}</span>
                           <span className="pequeno muted">
-                            {grupo ? (g.usuarioId === yo ? 'Tú' : g.quien) + ' · ' : ''}
+                            {grupo ? (g.usuarioId === yo && !g.caja ? 'Tú' : g.quien) + ' · ' : ''}
                             {etiquetaDia(g.fecha.slice(0, 10))} · {hora(g.fecha)}
                           </span>
                         </span>
@@ -551,7 +556,7 @@ export default function App() {
                         <span className="mov-txt">
                           <span className="mov-nombre">{nombreComercio(g.comercio)}</span>
                           <span className="pequeno muted">
-                            {grupo ? (g.usuarioId === yo ? 'Tú' : g.quien) + ' · ' : ''}
+                            {grupo ? (g.usuarioId === yo && !g.caja ? 'Tú' : g.quien) + ' · ' : ''}
                             {g.banco ? `${g.banco}${g.tipo === 'SINPE' ? ' · SINPE' : ''} · ` : ''}
                             {hora(g.fecha)}
                             {g.categoria === POR_CLASIFICAR ? ' · toca para clasificar' : ''}
@@ -582,12 +587,12 @@ export default function App() {
           onElegir={elegirCategoria}
           onMover={mover}
           onEditar={editarDetalle}
-          miembros={grupo?.miembros || []}
+          miembros={grupo ? pagadoresDe(grupo) : []}
           onEliminar={eliminar}
           onCerrar={() => setEditando(null)}
         />
       )}
-      {panel === 'nuevo' && <NuevoGasto ambitoNombre={grupo ? `el grupo ${grupo.nombre}` : 'tus gastos personales'} onGuardar={agregar} onCerrar={() => setPanel(null)} />}
+      {panel === 'nuevo' && <NuevoGasto ambitoNombre={grupo ? `el grupo ${grupo.nombre}` : 'tus gastos personales'} pagadores={grupo ? pagadoresDe(grupo) : null} yo={yo} onGuardar={agregar} onCerrar={() => setPanel(null)} />}
       {panel === 'guias' && grupo?.pagosGuias && (
         <PagosGuias grupo={grupo} yo={yo} onDatos={aplicar} onCerrar={() => setPanel(null)} />
       )}

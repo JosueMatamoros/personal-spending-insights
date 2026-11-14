@@ -97,6 +97,7 @@ export default function PagosGuias({ grupo, yo, onDatos, onCerrar }) {
                           {grupo.miembros.map((m) => (
                             <option key={m.id} value={m.id}>{m.nombre}{m.id === yo ? ' (yo)' : ''}</option>
                           ))}
+                          <option value="caja">Caja chica</option>
                           <option value={NO_SE_PAGA}>No se paga</option>
                         </select>
                         <ChevronDown size={16} className="selector-flecha" />

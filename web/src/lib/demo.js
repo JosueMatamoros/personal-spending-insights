@@ -50,7 +50,7 @@ let guias = [
 ].map(([fecha, hora, guia]) => ({ id: nid('s'), fecha, hora, guia, tour: 'Horseback Riding', monto: 10000, pagadoPor: null, noAplica: false }));
 const guiasPendientes = () => guias.filter((x) => !x.pagadoPor && !x.noAplica);
 const nombreDe = (id) => usuarios.find((u) => u.id === id)?.nombre;
-const vista = (m) => ({ ...m, categoria: categorias.find((c) => c.id === m.categoriaId)?.nombre || '', quien: nombreDe(m.usuarioId) });
+const vista = (m) => ({ ...m, categoria: categorias.find((c) => c.id === m.categoriaId)?.nombre || '', quien: m.caja ? 'Caja chica' : nombreDe(m.usuarioId) });
 const catsDe = (dueño) => categorias.filter((c) => c.dueño === dueño).map(({ dueño: _d, ...c }) => c); // eslint-disable-line no-unused-vars
 
 function datos(extra = {}) {
@@ -96,7 +96,7 @@ export async function demo(metodo, ruta, b = {}) {
 
   if (recurso === 'movimientos') {
     if (metodo === 'POST' && !id) {
-      movs.push({ id: nid('m'), fecha: b.fecha || new Date().toISOString().slice(0, 19), banco: null, tipo: 'Manual', comercio: b.comercio, monto: b.monto, moneda: 'CRC', montoOriginal: b.monto, categoriaId: b.categoriaId || null, usuarioId: JOSUE.id, grupoId: b.grupoId || null, origen: 'manual', eliminado: false, nota: b.nota });
+      movs.push({ id: nid('m'), fecha: b.fecha || new Date().toISOString().slice(0, 19), banco: null, tipo: 'Manual', comercio: b.comercio, monto: b.monto, moneda: 'CRC', montoOriginal: b.monto, categoriaId: b.categoriaId || null, usuarioId: b.pagadoPor && b.pagadoPor !== 'caja' ? b.pagadoPor : JOSUE.id, caja: b.pagadoPor === 'caja', grupoId: b.grupoId || null, origen: 'manual', eliminado: false, nota: b.nota });
       return datos();
     }
     if (!m) falla('Gasto no encontrado');
@@ -105,7 +105,7 @@ export async function demo(metodo, ruta, b = {}) {
       movs = movs.map((x) => (x.id === id || (x.comercio === m.comercio && x.grupoId === m.grupoId && !/sin descripci/i.test(m.comercio)) ? (actualizados++, { ...x, categoriaId: b.categoriaId }) : x));
       return datos({ actualizados });
     }
-    if (metodo === 'PATCH' && !accion) { if (b.comercio) m.comercio = b.comercio; if (b.monto) m.monto = m.montoOriginal = b.monto; if (b.pagadoPor) m.usuarioId = b.pagadoPor; return datos(); }
+    if (metodo === 'PATCH' && !accion) { if (b.comercio) m.comercio = b.comercio; if (b.monto) m.monto = m.montoOriginal = b.monto; if (b.pagadoPor) { m.caja = b.pagadoPor === 'caja'; if (!m.caja) m.usuarioId = b.pagadoPor; } return datos(); }
     if (accion === 'mover') { m.grupoId = b.grupoId; m.categoriaId = null; return datos(); }
     if (accion === 'restaurar') { m.eliminado = false; return datos(); }
     if (metodo === 'DELETE') { m.eliminado = true; return datos(); }

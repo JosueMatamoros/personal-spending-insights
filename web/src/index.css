@@ -401,3 +401,6 @@ input, select, textarea { font-size: max(16px, 1em); }
 .pagador:disabled:not(.activo) { opacity: 0.55; }
 .pagador-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nota-pagador { margin-top: 8px; }
+.avatar-caja, .pagador-caja .avatar { color: #D9B24C; }
+.pagador-caja.activo .avatar { background: #D9B24C; color: #0B0F0B; }
+.pagador-caja.activo { border-color: #D9B24C; background: color-mix(in srgb, #D9B24C 16%, var(--superficie-2)); }
