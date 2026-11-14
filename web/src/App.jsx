@@ -215,6 +215,12 @@ export default function App() {
   }
 
   async function editarDetalle(g, cambios) {
+    if (cambios.pagadoPor) { // cambiar quién pagó: muestra el error como aviso
+      const d = await hacer(() => editarGasto(g.id, cambios), { error: 'No se pudo cambiar' });
+      const quien = datos.usuarios.find((u) => u.id === cambios.pagadoPor);
+      if (d) mostrarAviso(cambios.pagadoPor === yo ? 'Ahora lo pagaste tú' : `Ahora lo pagó ${quien?.nombre || 'otra persona'}`);
+      return;
+    }
     await hacer(() => editarGasto(g.id, cambios), { lanzar: true });
     mostrarAviso('Gasto actualizado');
   }
@@ -517,6 +523,7 @@ export default function App() {
           onElegir={elegirCategoria}
           onMover={mover}
           onEditar={editarDetalle}
+          miembros={grupo?.miembros || []}
           onEliminar={eliminar}
           onCerrar={() => setEditando(null)}
         />

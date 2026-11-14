@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeftRight, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, CalendarDays, CreditCard, HandCoins, Pencil, Trash2 } from 'lucide-react';
+import Badge from './Badge.jsx';
 import { iconoPorNombre } from '../lib/iconos.js';
 import { categorias } from '../lib/categorias.js';
 import { colones, etiquetaDia, hora, nombreComercio } from '../lib/formato.js';
@@ -8,11 +9,23 @@ import { colones, etiquetaDia, hora, nombreComercio } from '../lib/formato.js';
  * Panel inferior de un gasto: cambiar categoría, mandarlo a un grupo (o
  * devolverlo a personal) y eliminarlo.
  */
-export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, puedePersonal = true, onElegir, onMover, onEditar, onEliminar, onCerrar }) {
+export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, miembros = [], puedePersonal = true, onElegir, onMover, onEditar, onEliminar, onCerrar }) {
   const mio = gasto.usuarioId === yo;
   const [confirmar, setConfirmar] = useState(false);
   const editable = gasto.origen === 'manual' && Boolean(onEditar);
   const [editando, setEditando] = useState(false);
+  const [cambiando, setCambiando] = useState(false);
+  // "Guía Dykember · Horseback Riding 12:00" → título + subtítulo
+  const nombre = nombreComercio(gasto.comercio);
+  const corte = gasto.tipo === 'Guía' ? nombre.indexOf(' · ') : -1;
+  const titulo = corte > 0 ? nombre.slice(0, corte) : nombre;
+  const subtitulo = corte > 0 ? nombre.slice(corte + 3) : '';
+
+  async function cambiarPagador(id) {
+    if (id === gasto.usuarioId) return;
+    setCambiando(true);
+    try { await onEditar(gasto, { pagadoPor: id }); } catch { /* el aviso ya lo muestra la app */ } finally { setCambiando(false); }
+  }
 
   useEffect(() => {
     const esc = (e) => e.key === 'Escape' && onCerrar();
@@ -27,25 +40,50 @@ export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, puedePe
         {editando ? (
           <EditarGasto gasto={gasto} onGuardar={async (c) => { await onEditar(gasto, c); setEditando(false); }} onCancelar={() => setEditando(false)} />
         ) : (
-        <header className="hoja-cab">
-          <div>
-            <h2 className="tit-editar">
-              {nombreComercio(gasto.comercio)}
+          <header className="det">
+            <div className="det-top">
+              <Badge categoria={gasto.categoria} size={24} className="badge grande" />
+              <div className="det-txt">
+                <h2>{titulo}</h2>
+                {subtitulo && <p className="muted">{subtitulo}</p>}
+              </div>
               {editable && (
                 <button className="icono lapiz" onClick={() => setEditando(true)} aria-label="Editar descripción y monto" title="Editar">
-                  <Pencil size={16} strokeWidth={2.2} />
+                  <Pencil size={18} strokeWidth={2.1} />
                 </button>
               )}
-            </h2>
-            <p className="muted">
-              {etiquetaDia(gasto.fecha)} · {hora(gasto.fecha)}
-              {gasto.banco ? ` · ${gasto.banco}${gasto.tipo === 'SINPE' ? ' SINPE' : ''}` : ' · agregado a mano'}
-              {enGrupo && gasto.quien ? ` · ${mio ? 'lo pagaste tú' : 'lo pagó ' + gasto.quien}` : ''}
-            </p>
-          </div>
-          <strong className="num">{colones(gasto.monto)}</strong>
-        </header>
+            </div>
+            <p className="det-monto num">{colones(gasto.monto)}</p>
+            <div className="det-meta">
+              <span className="meta-pill"><CalendarDays size={14} strokeWidth={2.1} />{etiquetaDia(gasto.fecha)} · {hora(gasto.fecha)}</span>
+              <span className="meta-pill">
+                {gasto.banco ? <CreditCard size={14} strokeWidth={2.1} /> : <HandCoins size={14} strokeWidth={2.1} />}
+                {gasto.banco ? `${gasto.banco}${gasto.tipo === 'SINPE' ? ' · SINPE' : ''}` : gasto.tipo === 'Guía' ? 'Pago de guía' : 'Agregado a mano'}
+              </span>
+            </div>
+          </header>
         )}
+
+        {enGrupo && miembros.length > 0 && !editando && (
+          <>
+            <p className="hoja-tit">Quién pagó</p>
+            <div className="pagadores">
+              {(editable ? miembros : miembros.filter((m) => m.id === gasto.usuarioId)).map((m) => (
+                <button
+                  key={m.id}
+                  className={'pagador' + (m.id === gasto.usuarioId ? ' activo' : '')}
+                  disabled={!editable || cambiando}
+                  onClick={() => cambiarPagador(m.id)}
+                >
+                  <span className="avatar">{m.nombre.slice(0, 1)}</span>
+                  <span className="pagador-nombre">{m.id === yo ? 'Yo' : m.nombre}</span>
+                </button>
+              ))}
+            </div>
+            {!editable && <p className="muted pequeno nota-pagador">Viene de {mio ? 'tu' : 'su'} tarjeta, por eso no se puede cambiar.</p>}
+          </>
+        )}
+
         {gasto.moneda === 'USD' && (
           <p className="nota">Compra en dólares (${gasto.montoOriginal}), convertida a colones.</p>
         )}
@@ -63,7 +101,7 @@ export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, puedePe
             </button>
           ))}
         </div>
-        <p className="muted pequeno">Los próximos gastos de este comercio se van a guardar en la categoría que elijas.</p>
+        {gasto.origen !== 'manual' && <p className="muted pequeno">Los próximos gastos de este comercio se van a guardar en la categoría que elijas.</p>}
 
         {mio && !enGrupo && grupos.length > 0 && (
           <>

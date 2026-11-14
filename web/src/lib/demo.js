@@ -105,7 +105,7 @@ export async function demo(metodo, ruta, b = {}) {
       movs = movs.map((x) => (x.id === id || (x.comercio === m.comercio && x.grupoId === m.grupoId && !/sin descripci/i.test(m.comercio)) ? (actualizados++, { ...x, categoriaId: b.categoriaId }) : x));
       return datos({ actualizados });
     }
-    if (metodo === 'PATCH' && !accion) { m.comercio = b.comercio; m.monto = b.monto; m.montoOriginal = b.monto; return datos(); }
+    if (metodo === 'PATCH' && !accion) { if (b.comercio) m.comercio = b.comercio; if (b.monto) m.monto = m.montoOriginal = b.monto; if (b.pagadoPor) m.usuarioId = b.pagadoPor; return datos(); }
     if (accion === 'mover') { m.grupoId = b.grupoId; m.categoriaId = null; return datos(); }
     if (accion === 'restaurar') { m.eliminado = false; return datos(); }
     if (metodo === 'DELETE') { m.eliminado = true; return datos(); }
