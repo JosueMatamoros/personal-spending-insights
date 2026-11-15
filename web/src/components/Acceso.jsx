@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { activar, login } from '../lib/api.js';
+import InstalarApp from './InstalarApp.jsx';
 
 /** Formatea la cédula mientras se escribe: 1-2345-6789 */
 function formatearCedula(v) {
@@ -75,6 +76,8 @@ export default function Acceso({ onEntrar }) {
         {act ? 'Ya tengo contraseña' : 'Primera vez u olvidé la contraseña'}
       </button>
       <button className="btn-link demo-sec" onClick={() => { location.hash = 'demo'; location.reload(); }}>Ver un ejemplo</button>
+
+      <InstalarApp />
     </main>
   );
 }

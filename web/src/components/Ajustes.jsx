@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { activarPush, desactivarPush, iphoneSinInstalar, pushActivo, pushSoportado } from '../lib/push.js';
+import InstalarApp from './InstalarApp.jsx';
 import { activarFaceId, desactivarFaceId, faceIdActivo, faceIdDisponible } from '../lib/faceid.js';
 
 const fecha = (ms) => new Date(ms).toLocaleDateString('es-CR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -48,6 +49,8 @@ export default function Ajustes({ sesion, ambitoNombre, grupo, onCerrarSesion, o
       <section className="hoja" role="dialog" aria-label="Ajustes" onClick={(e) => e.stopPropagation()}>
         <div className="hoja-asa" />
         <h2 className="ajustes-tit">Ajustes</h2>
+
+        <InstalarApp compacta />
 
         <button className="ajuste ajuste-btn" onClick={onCategorias}>
           <div>

@@ -422,3 +422,19 @@ input, select, textarea { font-size: max(16px, 1em); }
 .ing-neg { color: var(--sube); }
 .ing-dolar { margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--borde); }
 .hoja-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+
+/* ── Instalar la app (Android: botón nativo; iPhone: pasos) ── */
+.instalar {
+  margin-top: 24px; padding: 16px; border-radius: var(--radio);
+  background: var(--superficie); border: 1px solid var(--borde); display: grid; gap: 14px;
+}
+.instalar-compacta { margin: 8px 0 4px; }
+.instalar-cab { display: flex; gap: 12px; align-items: flex-start; }
+.instalar-ico {
+  flex: none; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--musgo-suave); color: var(--musgo);
+}
+.instalar-btn { width: 100%; }
+.instalar-pasos { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 0.88rem; color: var(--muted); }
+.instalar-pasos b { color: var(--texto); font-weight: 600; }
+.instalar-pasos svg { vertical-align: -2px; color: var(--texto); }
