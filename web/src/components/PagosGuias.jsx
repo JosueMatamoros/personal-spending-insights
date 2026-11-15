@@ -16,12 +16,20 @@ export default function PagosGuias({ grupo, yo, onDatos, onCerrar }) {
   const [guardando, setGuardando] = useState(null);
   const [error, setError] = useState('');
 
+  // Carga y se mantiene al día mientras está abierta (si cambian un guía en Asistencia, aparece solo).
   useEffect(() => {
     let vivo = true;
-    guiasDelGrupo(grupo.id)
-      .then((r) => vivo && setLista(r.guias))
-      .catch((e) => vivo && setError(e.message));
-    return () => { vivo = false; };
+    const traer = (primera) => {
+      if (!primera && document.hidden) return;
+      guiasDelGrupo(grupo.id)
+        .then((r) => vivo && setLista(r.guias))
+        .catch((e) => vivo && primera && setError(e.message));
+    };
+    traer(true);
+    const t = setInterval(() => traer(false), 30000);
+    const alVolver = () => traer(false);
+    document.addEventListener('visibilitychange', alVolver);
+    return () => { vivo = false; clearInterval(t); document.removeEventListener('visibilitychange', alVolver); };
   }, [grupo.id]);
 
   useEffect(() => {

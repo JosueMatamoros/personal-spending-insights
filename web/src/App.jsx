@@ -135,6 +135,23 @@ export default function App() {
     return () => { vivo = false; };
   }, [conectado]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sin hacer ruido: al volver a la app y cada minuto trae lo último (guías, gastos del otro, etc.)
+  useEffect(() => {
+    if (!conectado || bloqueado) return;
+    const traer = () => {
+      if (document.hidden) return;
+      obtenerDatos().then(aplicar).catch((e) => { if (e instanceof SesionVencida) salir(); });
+    };
+    const t = setInterval(traer, 60000);
+    document.addEventListener('visibilitychange', traer);
+    window.addEventListener('focus', traer);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', traer);
+      window.removeEventListener('focus', traer);
+    };
+  }, [conectado, bloqueado]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function refrescar() {
     if (cargando) return;
     setCargando(true);
