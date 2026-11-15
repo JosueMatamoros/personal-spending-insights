@@ -7,6 +7,7 @@ import Categorias from './components/Categorias.jsx';
 import Dona from './components/Dona.jsx';
 import Grupo from './components/Grupo.jsx';
 import HojaCategoria from './components/HojaCategoria.jsx';
+import IngresosMes from './components/IngresosMes.jsx';
 import NuevoGasto from './components/NuevoGasto.jsx';
 import PagosGuias from './components/PagosGuias.jsx';
 import { ChevronLeft, ChevronRight, CircleDashed, Compass, Landmark, Plus, RefreshCw, ScanFace, Settings, Sprout, UserRound } from 'lucide-react';
@@ -458,6 +459,8 @@ export default function App() {
           </ul>
         )}
       </section>
+
+      {grupo?.verIngresos && <IngresosMes grupo={grupo} mes={mes} gastado={reporte.totalGrupo} />}
 
       {grupo?.pagosGuias && grupo.guiasPendientes > 0 && (
         <button className="pendientes tarjeta" onClick={() => setPanel('guias')}>

@@ -62,7 +62,7 @@ function datos(extra = {}) {
     grupos: grupos.map((g) => ({
       ...g, miembros: g.miembros.map((id) => ({ id, nombre: nombreDe(id) })),
       categorias: catsDe(g.id), movimientos: vivos.filter((m) => m.grupoId === g.id).map(vista),
-      ...(g.pagosGuias ? { guiasPendientes: guiasPendientes().length } : {}),
+      ...(g.pagosGuias ? { guiasPendientes: guiasPendientes().length, verIngresos: true } : {}),
     })),
   };
 }
@@ -85,6 +85,9 @@ export async function demo(metodo, ruta, b = {}) {
   if (recurso === 'datos' || recurso === 'sync') return datos({ nuevos: 0 });
   if (recurso === 'push') falla('Las notificaciones no funcionan en el ejemplo');
 
+  if (recurso === 'grupos' && accion?.startsWith('ingresos')) {
+    return { ok: true, tipoCambio: 505, usd: 3100, crc: 1565500, porVenirUsd: 1300, porVenir: 656500, porOrigen: { direct: 1795, viator: 830, gyg: 475 }, reservas: 28, sinPrecio: 0 };
+  }
   if (recurso === 'grupos' && accion?.startsWith('guias')) {
     if (metodo === 'PUT') {
       const s = guias.find((x) => x.id === ruta.split('/')[4]) || falla('Guía no encontrado');

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Landmark } from 'lucide-react';
+import { Landmark, X } from 'lucide-react';
 import { categorias } from '../lib/categorias.js';
 
 const hoy = () => {
@@ -39,8 +39,13 @@ export default function NuevoGasto({ ambitoNombre, pagadores = null, yo, onGuard
     <div className="velo" onClick={onCerrar}>
       <form className="hoja" role="dialog" aria-label="Agregar gasto" onClick={(e) => e.stopPropagation()} onSubmit={guardar}>
         <div className="hoja-asa" />
-        <h2 className="ajustes-tit">Agregar gasto</h2>
-        <p className="muted pequeno">En {ambitoNombre}</p>
+        <header className="hoja-cab">
+          <div>
+            <h2 className="ajustes-tit">Agregar gasto</h2>
+            <p className="muted pequeno">En {ambitoNombre}</p>
+          </div>
+          <button type="button" className="icono cerrar" onClick={onCerrar} aria-label="Cerrar"><X size={22} strokeWidth={2.2} /></button>
+        </header>
 
         <div className="monto-campo">
           <span>₡</span>
