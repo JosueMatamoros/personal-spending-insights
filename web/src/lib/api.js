@@ -13,7 +13,8 @@ function escribir(k, v) {
 }
 
 // ── Sesión ──
-export const esDemo = () => typeof location !== 'undefined' && location.hash === '#demo';
+// El modo de ejemplo (#demo) quedó desactivado: solo se entra con cuenta.
+export const esDemo = () => false;
 
 export function leerSesion() {
   if (esDemo()) return { token: 'demo', expira: Infinity, demo: true, usuario: { id: 'u-josue', nombre: 'Josué' } };
