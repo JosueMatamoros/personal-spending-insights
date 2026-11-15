@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { activarPush, desactivarPush, iphoneSinInstalar, pushActivo, pushSoportado } from '../lib/push.js';
 import InstalarApp from './InstalarApp.jsx';
-import { activarFaceId, desactivarFaceId, faceIdActivo, faceIdDisponible } from '../lib/faceid.js';
+import { activarFaceId, desactivarFaceId, esAndroid, faceIdActivo, faceIdDisponible } from '../lib/faceid.js';
 
 const fecha = (ms) => new Date(ms).toLocaleDateString('es-CR', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -84,6 +84,7 @@ export default function Ajustes({ sesion, ambitoNombre, grupo, onCerrarSesion, o
           </button>
         </div>
 
+        {!esAndroid() && (
         <div className="ajuste">
           <div>
             <p className="ajuste-nombre">Desbloquear con Face ID</p>
@@ -93,6 +94,7 @@ export default function Ajustes({ sesion, ambitoNombre, grupo, onCerrarSesion, o
             <span />
           </button>
         </div>
+        )}
 
         {!sesion.demo && (
           <div className="ajuste">

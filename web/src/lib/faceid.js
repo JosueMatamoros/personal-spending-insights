@@ -6,7 +6,11 @@ const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/
 const deB64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 const azar = (n) => crypto.getRandomValues(new Uint8Array(n));
 
+// En Android no se usa: no pide cara/huella al abrir ni ofrece activarlo.
+export const esAndroid = () => typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
 export async function faceIdDisponible() {
+  if (esAndroid()) return false;
   try {
     return Boolean(window.PublicKeyCredential) &&
       await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
@@ -14,6 +18,7 @@ export async function faceIdDisponible() {
 }
 
 export function faceIdActivo() {
+  if (esAndroid()) return false;
   try { return Boolean(localStorage.getItem(K)); } catch { return false; }
 }
 
