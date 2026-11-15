@@ -419,6 +419,8 @@ export default function App() {
         <button className="icono" disabled={!puedeAdelante} onClick={() => { setMes(moverMes(mes, 1)); setFiltro(null); }} aria-label="Mes siguiente"><ChevronRight size={22} /></button>
       </nav>
 
+      {grupo?.verIngresos && <IngresosMes grupo={grupo} mes={mes} gastado={reporte.totalGrupo} />}
+
       <section className="total tarjeta">
         <p className="muted">{personaInfo ? `${personaInfo.id === yo ? 'Pagado por ti' : `Pagado por ${personaInfo.nombre}`} en ${grupo.nombre}` : grupo ? `Gastado en ${grupo.nombre}` : 'Total gastado'}</p>
         <p className="total-num num">{colones(reporte.total)}</p>
@@ -459,8 +461,6 @@ export default function App() {
           </ul>
         )}
       </section>
-
-      {grupo?.verIngresos && <IngresosMes grupo={grupo} mes={mes} gastado={reporte.totalGrupo} />}
 
       {grupo?.pagosGuias && grupo.guiasPendientes > 0 && (
         <button className="pendientes tarjeta" onClick={() => setPanel('guias')}>

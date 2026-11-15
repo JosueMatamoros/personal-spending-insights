@@ -406,16 +406,19 @@ input, select, textarea { font-size: max(16px, 1em); }
 .pagador-caja.activo { border-color: #D9B24C; background: color-mix(in srgb, #D9B24C 16%, var(--superficie-2)); }
 
 /* ── Ingresos del mes (Nature Tours) ── */
-.ingresos { margin-top: 12px; padding: 6px 16px; }
-.cargando-ing { padding: 14px 16px; }
-.ing-filas { width: 100%; display: flex; flex-direction: column; text-align: left; }
+.ingresos { margin-bottom: 12px; padding: 0; overflow: hidden; border-color: color-mix(in srgb, var(--musgo) 35%, var(--borde)); background: linear-gradient(135deg, color-mix(in srgb, var(--musgo) 14%, transparent), var(--superficie) 75%); }
+.ing-cab { width: 100%; display: flex; align-items: center; gap: 12px; padding: 16px 18px; text-align: left; }
+.ing-tit { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.ing-num { font-size: 1.6rem; font-weight: 800; color: var(--musgo); letter-spacing: -0.02em; }
+.ing-num small { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+.cargando-txt { opacity: 0.4; }
+.ing-flecha { color: var(--muted); transition: transform 0.2s; flex: none; }
+.ingresos.abierto .ing-flecha { transform: rotate(180deg); }
+.ing-detalle { padding: 2px 18px 14px; border-top: 1px solid var(--borde); }
 .ing-fila { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; }
-.ing-fila + .ing-fila { border-top: 1px solid var(--borde, rgba(127,127,127,0.15)); }
-.ing-fila small { font-size: 0.75rem; margin-left: 4px; }
-.ing-queda { font-weight: 700; font-size: 1.05rem; }
+.ing-fila + .ing-fila { border-top: 1px solid var(--borde); }
+.ing-queda { font-weight: 800; font-size: 1.08rem; }
 .ing-pos { color: var(--musgo); }
 .ing-neg { color: var(--sube); }
-.ing-detalle { border-top: 1px dashed var(--borde, rgba(127,127,127,0.2)); padding: 8px 0 6px; }
-.ing-detalle p { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
-.ing-detalle .ing-nota { display: block; margin-top: 4px; font-size: 0.72rem; }
+.ing-dolar { margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--borde); }
 .hoja-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4px; }

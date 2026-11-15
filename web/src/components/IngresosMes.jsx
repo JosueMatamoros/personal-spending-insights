@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { TrendingDown, TrendingUp } from 'lucide-react';
+import { ChevronDown, TrendingDown, TrendingUp } from 'lucide-react';
 import { ingresosDelGrupo } from '../lib/api.js';
-import { colones } from '../lib/formato.js';
+import { colones, nombreMes } from '../lib/formato.js';
 
 const dolares = (n) => '$' + new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(n || 0));
-const ORIGEN = { direct: 'Directo', viator: 'Viator', gyg: 'GetYourGuide', localbird: 'Localbird' };
+const tc = (n) => '₡' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+const fechaCorta = (ymd) => (ymd ? ymd.slice(8, 10) + '/' + ymd.slice(5, 7) : '');
 
 /**
- * Ingresos del negocio en el mes (según las reservas, como en Finanzas) contra
- * los gastos del grupo: cuánto queda. Solo lectura.
+ * Ingresos del negocio en el mes (según las reservas, como en Finanzas). Al
+ * tocarlo muestra la resta contra los gastos y a cuánto se tomó el dólar.
  */
 export default function IngresosMes({ grupo, mes, gastado }) {
   const [ing, setIng] = useState(null);
@@ -27,39 +28,39 @@ export default function IngresosMes({ grupo, mes, gastado }) {
     return () => { vivo = false; clearInterval(t); document.removeEventListener('visibilitychange', traer); };
   }, [grupo.id, mes]);
 
-  if (!ing) return <section className="ingresos tarjeta cargando-ing"><p className="muted pequeno">Cargando ingresos…</p></section>;
-
-  const queda = ing.crc - gastado;
-  const origenes = Object.entries(ing.porOrigen || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const queda = ing ? ing.crc - gastado : 0;
 
   return (
-    <section className="ingresos tarjeta">
-      <button className="ing-filas" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}>
-        <span className="ing-fila">
-          <span className="muted">Ingresos del mes</span>
-          <span className="num ing-pos">{colones(ing.crc)} <small className="muted">{dolares(ing.usd)}</small></span>
+    <section className={'ingresos tarjeta' + (abierto ? ' abierto' : '')}>
+      <button className="ing-cab" onClick={() => ing && setAbierto(!abierto)} aria-expanded={abierto}>
+        <span className="ing-tit">
+          <span className="muted">Ingresos de {nombreMes(mes, false).toLowerCase()}</span>
+          {ing ? (
+            <span className="ing-num num">{colones(ing.crc)} <small>{dolares(ing.usd)}</small></span>
+          ) : (
+            <span className="ing-num num cargando-txt">₡ …</span>
+          )}
         </span>
-        <span className="ing-fila">
-          <span className="muted">Gastos</span>
-          <span className="num">− {colones(gastado)}</span>
-        </span>
-        <span className="ing-fila ing-queda">
-          <span className="tit-icono">
-            {queda >= 0 ? <TrendingUp size={18} color="var(--musgo)" /> : <TrendingDown size={18} color="var(--sube)" />}
-            {queda >= 0 ? 'Queda' : 'Faltan'}
-          </span>
-          <span className={'num ' + (queda >= 0 ? 'ing-pos' : 'ing-neg')}>{colones(Math.abs(queda))}</span>
-        </span>
+        <ChevronDown size={20} className="ing-flecha" />
       </button>
-      {abierto && (
-        <div className="ing-detalle pequeno muted">
-          {origenes.map(([k, v]) => (
-            <p key={k}><span>{ORIGEN[k] || k}</span><span className="num">{dolares(v)}</span></p>
-          ))}
-          <p><span>Reservas hasta hoy</span><span className="num">{ing.reservas}</span></p>
-          {ing.porVenir > 0 && <p><span>Por venir este mes</span><span className="num">{colones(ing.porVenir)} · {dolares(ing.porVenirUsd)}</span></p>}
-          {ing.sinPrecio > 0 && <p><span>Reservas sin precio (no suman)</span><span className="num">{ing.sinPrecio}</span></p>}
-          <p className="ing-nota">Tours hasta hoy, igual que en Finanzas. Dólares a ₡{ing.tipoCambio}.</p>
+
+      {abierto && ing && (
+        <div className="ing-detalle">
+          <p className="ing-fila"><span className="muted">Ingresos</span><span className="num">{colones(ing.crc)}</span></p>
+          <p className="ing-fila"><span className="muted">Gastos</span><span className="num">− {colones(gastado)}</span></p>
+          <p className={'ing-fila ing-queda ' + (queda >= 0 ? 'ing-pos' : 'ing-neg')}>
+            <span className="tit-icono">
+              {queda >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+              {queda >= 0 ? 'Queda' : 'Faltan'}
+            </span>
+            <span className="num">{colones(Math.abs(queda))}</span>
+          </p>
+          <p className="ing-dolar pequeno muted">
+            Dólar a <strong className="num">{tc(ing.tipoCambio)}</strong>
+            {ing.cerrado
+              ? ' · guardado al cierre del mes'
+              : ing.fechaTipoCambio ? ` · BCCR, compra del ${fechaCorta(ing.fechaTipoCambio)}` : ' · aproximado'}
+          </p>
         </div>
       )}
     </section>

@@ -86,7 +86,7 @@ export async function demo(metodo, ruta, b = {}) {
   if (recurso === 'push') falla('Las notificaciones no funcionan en el ejemplo');
 
   if (recurso === 'grupos' && accion?.startsWith('ingresos')) {
-    return { ok: true, tipoCambio: 505, usd: 3100, crc: 1565500, porVenirUsd: 1300, porVenir: 656500, porOrigen: { direct: 1795, viator: 830, gyg: 475 }, reservas: 28, sinPrecio: 0 };
+    return { ok: true, usd: 3100, crc: 1371936, tipoCambio: 442.56, fechaTipoCambio: '2026-11-14', cerrado: false };
   }
   if (recurso === 'grupos' && accion?.startsWith('guias')) {
     if (metodo === 'PUT') {
