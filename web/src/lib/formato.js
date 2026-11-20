@@ -43,3 +43,15 @@ export function nombreComercio(s) {
     return p.charAt(0).toUpperCase() + p.slice(1);
   }).join('');
 }
+
+/** Lo que se escribe en el campo de monto: colones enteros con comas; dólares con hasta 2 decimales. */
+export function escribirMonto(texto, moneda) {
+  const t = String(texto).replace(/,/g, '');
+  if (moneda !== 'USD') return t.replace(/\D/g, '').replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const [ent = '', ...resto] = t.replace(/[^\d.]/g, '').split('.');
+  const enteros = ent.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return resto.length ? `${enteros || '0'}.${resto.join('').slice(0, 2)}` : enteros;
+}
+
+/** El número escrito en el campo de monto. */
+export const leerMonto = (texto) => Number(String(texto).replace(/[^\d.]/g, '')) || 0;

@@ -321,6 +321,8 @@ h2 { font-size: 0.95rem; font-weight: 700; letter-spacing: -0.005em; }
 /* ── Agregar gasto ── */
 .monto-campo { display: flex; align-items: center; gap: 6px; margin: 18px 0 12px; padding: 0 16px; height: 68px; border-radius: 18px; background: var(--superficie-2); border: 1px solid var(--borde); }
 .monto-campo span { font-size: 1.6rem; font-weight: 800; color: var(--muted); }
+.moneda-btn { flex: none; min-width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--borde); background: var(--superficie); color: var(--muted); font: inherit; font-size: 1.5rem; font-weight: 800; cursor: pointer; }
+.moneda-btn:active { transform: scale(0.94); }
 .monto-campo input { flex: 1; min-width: 0; background: none; border: 0; color: var(--texto); font: inherit; font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .monto-campo input:focus, .campos input:focus { outline: none; }
 .monto-campo:focus-within { border-color: var(--musgo-fuerte); }

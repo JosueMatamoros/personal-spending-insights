@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Landmark, X } from 'lucide-react';
 import { categorias } from '../lib/categorias.js';
+import { escribirMonto, leerMonto } from '../lib/formato.js';
 
 const hoy = () => {
   const d = new Date();
@@ -11,6 +12,7 @@ const hoy = () => {
 export default function NuevoGasto({ ambitoNombre, pagadores = null, yo, onGuardar, onCerrar }) {
   const [pagadoPor, setPagadoPor] = useState(yo);
   const [monto, setMonto] = useState('');
+  const [moneda, setMoneda] = useState('CRC');
   const [comercio, setComercio] = useState('');
   const [fecha, setFecha] = useState(hoy);
   const [categoria, setCategoria] = useState(null);
@@ -19,7 +21,7 @@ export default function NuevoGasto({ ambitoNombre, pagadores = null, yo, onGuard
 
   async function guardar(e) {
     e.preventDefault();
-    const n = Number(String(monto).replace(/[^\d.]/g, ''));
+    const n = leerMonto(monto);
     if (!n) return setError('Escribe el monto');
     if (!comercio.trim()) return setError('Escribe una descripción');
     setGuardando(true);
@@ -28,7 +30,7 @@ export default function NuevoGasto({ ambitoNombre, pagadores = null, yo, onGuard
       // Si es hoy, guarda la hora actual; si es otro día, al mediodía
       const ahora = new Date();
       const f = fecha === hoy() ? ahora : new Date(`${fecha}T12:00:00`);
-      await onGuardar({ monto: n, comercio: comercio.trim(), fecha: f.toISOString(), categoriaId: categoria?.id || null, ...(pagadores ? { pagadoPor } : {}) });
+      await onGuardar({ monto: n, comercio: comercio.trim(), fecha: f.toISOString(), categoriaId: categoria?.id || null, moneda, ...(pagadores ? { pagadoPor } : {}) });
     } catch (err) {
       setError(err.message);
       setGuardando(false);
@@ -48,8 +50,8 @@ export default function NuevoGasto({ ambitoNombre, pagadores = null, yo, onGuard
         </header>
 
         <div className="monto-campo">
-          <span>₡</span>
-          <input value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ','))} inputMode="numeric" placeholder="0" aria-label="Monto" autoFocus />
+          <BotonMoneda moneda={moneda} onCambiar={(m) => { setMoneda(m); setMonto(escribirMonto(monto, m)); }} />
+          <input value={monto} onChange={(e) => setMonto(escribirMonto(e.target.value, moneda))} inputMode={moneda === 'USD' ? 'decimal' : 'numeric'} placeholder="0" aria-label="Monto" autoFocus />
         </div>
         <div className="campos">
           <input value={comercio} onChange={(e) => setComercio(e.target.value)} placeholder="Descripción" aria-label="Descripción" maxLength={120} />
@@ -83,5 +85,15 @@ export default function NuevoGasto({ ambitoNombre, pagadores = null, yo, onGuard
         <button className="btn-primario btn-ancho" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar gasto'}</button>
       </form>
     </div>
+  );
+}
+
+/** El símbolo del monto: al tocarlo cambia entre colones y dólares. */
+export function BotonMoneda({ moneda, onCambiar }) {
+  const usd = moneda === 'USD';
+  return (
+    <button type="button" className="moneda-btn" onClick={() => onCambiar(usd ? 'CRC' : 'USD')} aria-label={usd ? 'En dólares, tocar para colones' : 'En colones, tocar para dólares'} title="Cambiar moneda">
+      {usd ? '$' : '₡'}
+    </button>
   );
 }

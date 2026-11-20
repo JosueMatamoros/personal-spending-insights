@@ -3,7 +3,8 @@ import { ArrowLeftRight, CalendarDays, CreditCard, HandCoins, Landmark, Pencil, 
 import Badge from './Badge.jsx';
 import { iconoPorNombre } from '../lib/iconos.js';
 import { categorias } from '../lib/categorias.js';
-import { colones, etiquetaDia, hora, nombreComercio } from '../lib/formato.js';
+import { colones, escribirMonto, etiquetaDia, hora, leerMonto, nombreComercio } from '../lib/formato.js';
+import { BotonMoneda } from './NuevoGasto.jsx';
 
 /**
  * Panel inferior de un gasto: cambiar categoría, mandarlo a un grupo (o
@@ -147,21 +148,23 @@ export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, miembro
 
 /** Editar la descripción y el monto de un gasto agregado a mano (o un pago de guía). */
 function EditarGasto({ gasto, onGuardar, onCancelar }) {
-  const formato = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const [comercio, setComercio] = useState(gasto.comercio);
-  const [monto, setMonto] = useState(formato(gasto.monto));
+  const [moneda, setMoneda] = useState(gasto.moneda === 'USD' ? 'USD' : 'CRC');
+  const [monto, setMonto] = useState(() => (gasto.moneda === 'USD'
+    ? escribirMonto(String(gasto.montoOriginal ?? ''), 'USD')
+    : escribirMonto(String(Math.round(gasto.monto)), 'CRC')));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
   async function guardar(e) {
     e.preventDefault();
-    const n = Number(monto.replace(/[^\d]/g, ''));
+    const n = leerMonto(monto);
     if (!n) return setError('Escribe el monto');
     if (!comercio.trim()) return setError('Escribe una descripción');
     setGuardando(true);
     setError('');
     try {
-      await onGuardar({ comercio: comercio.trim(), monto: n });
+      await onGuardar({ comercio: comercio.trim(), monto: n, moneda });
     } catch (err) {
       setError(err.message);
       setGuardando(false);
@@ -172,8 +175,8 @@ function EditarGasto({ gasto, onGuardar, onCancelar }) {
     <form className="editar-gasto" onSubmit={guardar}>
       <p className="hoja-tit" style={{ marginTop: 0 }}>Editar gasto</p>
       <div className="monto-campo">
-        <span>₡</span>
-        <input value={monto} onChange={(e) => setMonto(formato(Number(e.target.value.replace(/[^\d]/g, '')) || 0).replace(/^0$/, ''))} inputMode="numeric" aria-label="Monto" />
+        <BotonMoneda moneda={moneda} onCambiar={(m) => { setMoneda(m); setMonto(escribirMonto(monto, m)); }} />
+        <input value={monto} onChange={(e) => setMonto(escribirMonto(e.target.value, moneda))} inputMode={moneda === 'USD' ? 'decimal' : 'numeric'} aria-label="Monto" />
       </div>
       <div className="campos campos-uno">
         <input value={comercio} onChange={(e) => setComercio(e.target.value)} placeholder="Descripción" aria-label="Descripción" maxLength={120} />
