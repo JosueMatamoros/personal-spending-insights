@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Acceso from './components/Acceso.jsx';
 import Ajustes from './components/Ajustes.jsx';
 import Bloqueo from './components/Bloqueo.jsx';
@@ -50,7 +50,11 @@ export default function App() {
   const [zonaCat, setZonaCat] = useState(null); // categoría elegida dentro de la tarjeta de zonas
   const [abiertoDeben, setAbiertoDeben] = useState(null);
   const [editando, setEditando] = useState(null);
+  const ubicacionRef = useRef(null); // ubicación del teléfono, pedida al abrir "Agregar gasto"
   const [panel, setPanel] = useState(null); // ajustes | categorias | nuevo | grupo-nuevo | grupo-editar | faceid | guias
+  useEffect(() => {
+    ubicacionRef.current = panel === 'nuevo' ? ubicacionActual(8000) : null;
+  }, [panel]);
   const [cargando, setCargando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const conectado = Boolean(sesion);
@@ -109,6 +113,21 @@ export default function App() {
     setDatos(VACIO);
     setPanel(null);
     if (location.hash === '#demo') history.replaceState(null, '', location.pathname);
+  }
+
+  /**
+   * Cambio optimista: el gasto cambia en pantalla al toque y el servidor
+   * confirma después (si falla, vuelve a como estaba). Así los selectores no
+   * esperan la respuesta del servidor para reaccionar.
+   */
+  function parchar(id, cambios) {
+    let antes = null;
+    setDatos((d) => {
+      antes = d;
+      const fix = (movs) => (movs || []).map((m) => (m.id === id ? { ...m, ...cambios } : m));
+      return { ...d, personal: { ...d.personal, movimientos: fix(d.personal?.movimientos) }, grupos: d.grupos.map((g) => ({ ...g, movimientos: fix(g.movimientos) })) };
+    });
+    return () => antes && setDatos(antes);
   }
 
   /** Ejecuta una llamada al servidor y aplica la respuesta; maneja errores comunes. */
@@ -237,16 +256,20 @@ export default function App() {
     const g = gastos.find((x) => x.id === editando);
     setEditando(null);
     if (!g || g.categoria === nombre) return;
+    const deshacer = parchar(g.id, { categoria: nombre === POR_CLASIFICAR ? '' : nombre, categoriaId: idDe(nombre) });
     const d = await hacer(() => cambiarCategoria(g.id, idDe(nombre)));
-    if (!d) return;
+    if (!d) return deshacer();
     const otros = (d.actualizados || 1) - 1;
     mostrarAviso(otros > 0 ? `Listo. También moví ${otros} gasto${otros === 1 ? '' : 's'} más de ${nombreComercio(g.comercio)}` : `Movido a ${nombre}`);
   }
 
   async function editarDetalle(g, cambios) {
     if (cambios.pagadoPor) { // cambiar quién pagó: muestra el error como aviso
-      const d = await hacer(() => editarGasto(g.id, cambios), { error: 'No se pudo cambiar' });
       const quien = datos.usuarios.find((u) => u.id === cambios.pagadoPor);
+      const caja = cambios.pagadoPor === CAJA;
+      const deshacer = parchar(g.id, caja ? { caja: true, quien: 'Caja chica' } : { caja: false, usuarioId: cambios.pagadoPor, quien: quien?.nombre || g.quien });
+      const d = await hacer(() => editarGasto(g.id, cambios), { error: 'No se pudo cambiar' });
+      if (!d) deshacer();
       if (d) mostrarAviso(cambios.pagadoPor === CAJA ? 'Ahora lo pagó la caja chica' : cambios.pagadoPor === yo ? 'Ahora lo pagaste tú' : `Ahora lo pagó ${quien?.nombre || 'otra persona'}`);
       return;
     }
@@ -255,8 +278,10 @@ export default function App() {
   }
 
   async function ponerZona(g, z) {
+    const deshacer = parchar(g.id, { zona: z });
     const d = await hacer(() => cambiarZona(g.id, z), { error: 'No se pudo guardar la zona' });
-    if (d) mostrarAviso(z ? `Zona: ${ZONAS.find((x) => x.id === z)?.nombre}` : 'Sin zona');
+    if (!d) deshacer();
+    else mostrarAviso(z ? `Zona: ${ZONAS.find((x) => x.id === z)?.nombre}` : 'Sin zona');
   }
 
   async function cobro(accion, x) {
@@ -298,9 +323,12 @@ export default function App() {
   }
 
   async function agregar(datosGasto) {
-    // Gasto personal de hoy: la zona sale de dónde está el teléfono (no de lo que diga el nombre)
+    // Gasto personal de hoy: la zona sale de dónde está el teléfono (no de lo que diga el nombre).
+    // La ubicación se pide al abrir "Agregar gasto"; al guardar se espera como mucho 1.5 s.
     const reciente = !grupo && Math.abs(Date.now() - new Date(datosGasto.fecha || Date.now())) < 6 * 3600 * 1000;
-    const donde = reciente ? await ubicacionActual() : {};
+    const donde = reciente && ubicacionRef.current
+      ? await Promise.race([ubicacionRef.current, new Promise((ok) => setTimeout(() => ok({}), 1500))])
+      : {};
     await hacer(() => crearGasto({ ...datosGasto, ...donde, grupoId: grupo?.id || null }), { lanzar: true });
     setPanel(null);
     const m = claveMes(new Date(datosGasto.fecha));
@@ -657,7 +685,7 @@ export default function App() {
                     <button key={z.id} className={'zona-fila' + (zona === z.id ? ' activo' : '') + (zona && zona !== z.id ? ' apagado' : '')} style={{ '--c': z.color }} onClick={() => verZona(z.id)}>
                       <span className="zona-punto" />
                       <span className="fila-txt">
-                        <span className="fila-nombre">{z.nombre}{z.sub && <span className="muted pequeno"> · {z.sub}</span>}</span>
+                        <span className="fila-nombre">{z.nombre}</span>
                         <span className="barra-pct"><span style={{ width: pct + '%' }} /></span>
                       </span>
                       <span className="fila-der">

@@ -10,9 +10,8 @@ export const CATEGORIAS_INICIALES = [
   { nombre: 'Servicios', icono: 'Lightbulb', color: '#CDBB5E' },
   { nombre: 'Vivienda', icono: 'House', color: '#B98668' },
   { nombre: 'Salud', icono: 'Pill', color: '#DE7F72' },
-  { nombre: 'Entretenimiento', icono: 'Clapperboard', color: '#5FB8A5' },
   { nombre: 'Suscripciones', icono: 'Tv', color: '#8E9DDB' },
-  { nombre: 'Salidas', icono: 'PartyPopper', color: '#C98BB9', clave: 'Salidas' },
+  { nombre: 'Salidas', icono: 'HeartHandshake', color: '#C98BB9', clave: 'Salidas' },
   { nombre: 'Otros', icono: 'Shapes', color: '#9AA396' },
 ];
 
@@ -42,8 +41,8 @@ export const idDe = (nombre) => porNombre[nombre]?.id || null;
 // ── Zonas (solo supermercado, comida y salidas) ──
 export const CLAVES_CON_ZONA = ['Supermercado', 'Comida y restaurantes', 'Salidas'];
 export const ZONAS = [
-  { id: 'pueblo', nombre: 'Pueblo', sub: 'Chachagua', color: '#8FB573' },
-  { id: 'ciudad', nombre: 'Ciudad', sub: 'San José · Cartago', color: '#6FA8C9' },
+  { id: 'pueblo', nombre: 'Pueblo', color: '#8FB573' },
+  { id: 'ciudad', nombre: 'Ciudad', color: '#6FA8C9' },
   { id: 'viaje', nombre: 'Viaje', color: '#E0A458', noCuenta: true },
   { id: 'ninguna', nombre: 'Ninguna', color: '#9AA396', noCuenta: true },
 ];

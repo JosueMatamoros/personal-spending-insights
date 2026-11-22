@@ -103,7 +103,7 @@ export default function HojaCategoria({ gasto, yo, grupos = [], enGrupo, miembro
                   style={{ '--c': z.color }}
                   onClick={() => onZona(gasto, gasto.zona === z.id ? null : z.id)}
                 >
-                  <span className="chip-txt">{z.nombre}{z.sub && <span className="muted"> · {z.sub}</span>}</span>
+                  <span className="chip-txt">{z.nombre}</span>
                 </button>
               ))}
             </div>

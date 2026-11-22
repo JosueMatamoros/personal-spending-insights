@@ -21,7 +21,7 @@ const base = [
   ['2026-10-06T18:45', 'BAC', 'Tarjeta', 'Uber Trip', 4200, 'Transporte'],
   ['2026-10-07T09:00', 'BAC', 'Tarjeta', 'Netflix.com', 7800, 'Suscripciones'],
   ['2026-10-12T13:20', 'Popular', 'Tarjeta', 'Walmart Curridabat', 41800, 'Supermercado'],
-  ['2026-10-18T21:00', 'BAC', 'Tarjeta', 'Cinepolis Lincoln Plaza', 9800, 'Entretenimiento'],
+  ['2026-10-18T21:00', 'BAC', 'Tarjeta', 'Cinepolis Lincoln Plaza', 9800, 'Salidas'],
   ['2026-11-01T11:15', 'BAC', 'Tarjeta', 'Automercado Escazu', 28900, 'Supermercado'],
   ['2026-11-02T10:00', 'BAC', 'Tarjeta', 'Spotify', 3200, 'Suscripciones'],
   ['2026-11-03T17:29', 'BCR', 'Tarjeta', 'Taco Bell Terramall Cartago', 7500, 'Comida y restaurantes'],

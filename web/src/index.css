@@ -445,7 +445,7 @@ input, select, textarea { font-size: max(16px, 1em); }
 .det-parte { margin-top: -4px; }
 .zonas-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
 .chip-zona { justify-content: center; }
-.cobros { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.cobros { list-style: none; margin: 0 0 10px; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .cobro { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--borde); }
 .cobro.pagado { opacity: 0.55; }
 .cobro.pagado .num { text-decoration: line-through; }
@@ -454,8 +454,8 @@ input, select, textarea { font-size: max(16px, 1em); }
 .cobro-btn { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--superficie); color: var(--muted); border: 1px solid var(--borde); }
 .cobro-btn.ok { background: var(--musgo-suave); color: var(--musgo); border-color: var(--musgo-fuerte); }
 .cobro-form { margin-bottom: 6px; }
-.segmento { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--borde); margin-bottom: 12px; }
-.segmento button { height: 38px; border-radius: 10px; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.segmento { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; padding: 4px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--borde); margin-bottom: 12px; }
+.segmento button { min-height: 38px; padding: 4px 6px; line-height: 1.15; border-radius: 10px; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
 .segmento button.activo { background: var(--musgo-suave); color: var(--musgo); }
 .dividir { display: flex; align-items: center; gap: 12px; }
 .dividir-txt { flex: 1; display: flex; flex-direction: column; gap: 2px; }
@@ -465,8 +465,8 @@ input, select, textarea { font-size: max(16px, 1em); }
 .stepper .num { min-width: 28px; text-align: center; font-size: 1.15rem; font-weight: 800; }
 .dividir-res { margin: 8px 0 12px; color: var(--musgo); }
 .cobro-filas { display: grid; gap: 8px; }
-.cobro-fila { display: grid; grid-template-columns: 1fr 120px auto; gap: 8px; align-items: center; }
-.cobro-fila.solo-nombre { grid-template-columns: 1fr auto; }
+.cobro-fila { display: grid; grid-template-columns: minmax(0, 1fr) 104px auto; gap: 8px; align-items: center; }
+.cobro-fila.solo-nombre { grid-template-columns: minmax(0, 1fr) auto; }
 .cobro-fila input { min-width: 0; height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--borde); background: var(--superficie-2); color: var(--texto); font: inherit; font-size: 16px; }
 .cobro-fila input:focus { outline: none; border-color: var(--musgo-fuerte); }
 .cobro-fijo { color: var(--muted); padding: 0 4px; }
@@ -476,10 +476,10 @@ input, select, textarea { font-size: max(16px, 1em); }
 .mov-deben { color: var(--musgo); }
 
 /* Tarjeta "Te deben" */
-.deben-lista { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.deben-lista { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .deben-persona { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 4px; text-align: left; }
 .deben-persona > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.deben-items { list-style: none; margin: 4px 0 10px 42px; padding: 0; display: grid; gap: 4px; }
+.deben-items { list-style: none; margin: 4px 0 10px 42px; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .deben-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
 .deben-item > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -492,3 +492,9 @@ input, select, textarea { font-size: max(16px, 1em); }
 .zona-punto { width: 12px; height: 12px; border-radius: 99px; background: var(--c); flex: none; }
 .zona-fila .fila-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .zona-extra { margin-top: 6px; }
+
+/* Nombres largos en "Te deben" / "Me deben": se cortan con … y el monto no se sale */
+.deben-persona > span:nth-child(2) strong, .deben-persona > span:nth-child(2) .pequeno { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deben-persona > .num, .deben-item > .num, .cobro > .num { flex: none; white-space: nowrap; }
+.deben-persona .avatar, .cobro .avatar { flex: none; }
+.dividir-txt { min-width: 0; }
