@@ -79,6 +79,10 @@ export const editarGasto = (id, datos) => llamar('PATCH', `/movimientos/${id}`, 
 export const eliminarGasto = (id) => llamar('DELETE', `/movimientos/${id}`);
 export const restaurarGasto = (id) => llamar('POST', `/movimientos/${id}/restaurar`, {});
 export const crearGasto = (datos) => llamar('POST', '/movimientos', datos);
+export const cambiarZona = (id, zona) => llamar('PATCH', `/movimientos/${id}/zona`, { zona });
+export const agregarCobro = (id, cobros) => llamar('POST', `/movimientos/${id}/cobros`, { cobros });
+export const marcarCobros = (ids, pagado) => llamar('POST', '/cobros/pagar', { ids, pagado });
+export const borrarCobro = (id) => llamar('DELETE', `/cobros/${id}`);
 export const crearCategoria = (grupoId, datos) => llamar('POST', '/categorias', { grupoId, ...datos });
 export const editarCategoria = (id, datos) => llamar('PATCH', `/categorias/${id}`, datos);
 export const borrarCategoria = (id) => llamar('DELETE', `/categorias/${id}`);

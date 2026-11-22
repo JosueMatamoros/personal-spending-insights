@@ -10,11 +10,11 @@ import HojaCategoria from './components/HojaCategoria.jsx';
 import IngresosMes from './components/IngresosMes.jsx';
 import NuevoGasto from './components/NuevoGasto.jsx';
 import PagosGuias from './components/PagosGuias.jsx';
-import { ChevronLeft, ChevronRight, CircleDashed, Compass, Landmark, Plus, RefreshCw, ScanFace, Settings, Sprout, UserRound } from 'lucide-react';
-import { POR_CLASIFICAR, cat, categorias, idDe, normalizarCategoria, setCategorias } from './lib/categorias.js';
+import { Check, ChevronLeft, ChevronRight, CircleDashed, Compass, HandCoins, Landmark, MapPin, Plus, RefreshCw, ScanFace, Settings, Sprout, UserRound } from 'lucide-react';
+import { POR_CLASIFICAR, ZONAS, cat, categorias, idDe, llevaZona, miParte, normalizarCategoria, setCategorias, ubicacionActual } from './lib/categorias.js';
 import { iconoPorNombre } from './lib/iconos.js';
 import {
-  SesionVencida, borrarCategoria, borrarSesion, cambiarCategoria, cerrarSesion, crearCategoria, crearGasto, crearGrupo,
+  SesionVencida, agregarCobro, borrarCobro, cambiarZona, marcarCobros, borrarCategoria, borrarSesion, cambiarCategoria, cerrarSesion, crearCategoria, crearGasto, crearGrupo,
   editarCategoria, editarGasto, editarGrupo, eliminarGasto, guardarCache, leerCache, leerSesion, moverGasto, obtenerDatos, restaurarGasto, sincronizar,
 } from './lib/api.js';
 import { K_PREGUNTADO, activarFaceId, faceIdActivo, faceIdDisponible } from './lib/faceid.js';
@@ -46,6 +46,9 @@ export default function App() {
   });
   const [filtro, setFiltro] = useState(null);
   const [persona, setPersona] = useState(null); // en grupos: ver solo los gastos de una persona
+  const [zona, setZona] = useState(null); // personal: ver solo los gastos de una zona ('sin' = sin zona)
+  const [zonaCat, setZonaCat] = useState(null); // categoría elegida dentro de la tarjeta de zonas
+  const [abiertoDeben, setAbiertoDeben] = useState(null);
   const [editando, setEditando] = useState(null);
   const [panel, setPanel] = useState(null); // ajustes | categorias | nuevo | grupo-nuevo | grupo-editar | faceid | guias
   const [cargando, setCargando] = useState(false);
@@ -63,7 +66,8 @@ export default function App() {
   // Las categorías activas son las del ámbito (las usan Badge, Dona, las hojas…)
   setCategorias(scope.categorias?.length ? scope.categorias : null);
   const gastos = useMemo(
-    () => (scope.movimientos || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria) })),
+    // `parte`: lo que de verdad gasté (el total menos lo que otros me deben)
+    () => (scope.movimientos || []).map((g) => ({ ...g, categoria: normalizarCategoria(g.categoria), parte: miParte(g) })),
     [scope]  
   );
 
@@ -71,6 +75,7 @@ export default function App() {
     setAmbitoEstado(a);
     setFiltro(null);
     setPersona(null);
+    setZona(null);
     try { localStorage.setItem(K_AMBITO, a); } catch { /* nada */ }
   }
 
@@ -249,6 +254,28 @@ export default function App() {
     mostrarAviso('Gasto actualizado');
   }
 
+  async function ponerZona(g, z) {
+    const d = await hacer(() => cambiarZona(g.id, z), { error: 'No se pudo guardar la zona' });
+    if (d) mostrarAviso(z ? `Zona: ${ZONAS.find((x) => x.id === z)?.nombre}` : 'Sin zona');
+  }
+
+  async function cobro(accion, x) {
+    const g = gastos.find((m) => m.id === editando);
+    const fn = accion === 'agregar' ? () => agregarCobro(g.id, x.cobros)
+      : accion === 'pagar' ? () => marcarCobros(x.ids, x.pagado)
+        : () => borrarCobro(x.id);
+    await hacer(fn, { lanzar: true });
+    if (accion === 'agregar') {
+      const t = x.cobros.reduce((s, k) => s + k.monto, 0);
+      mostrarAviso(x.cobros.length === 1 ? `${x.cobros[0].persona} te debe ${colones(t)}` : `Te deben ${colones(t)} entre ${x.cobros.length}`);
+    }
+  }
+
+  async function pagaron(ids, quien) {
+    const d = await hacer(() => marcarCobros(ids, true), { error: 'No se pudo marcar' });
+    if (d) mostrarAviso(`${quien} ya te pagó`, 'ok', { texto: 'Deshacer', fn: async () => { setAviso(null); await hacer(() => marcarCobros(ids, false)); } });
+  }
+
   async function mover(g, grupoId) {
     setEditando(null);
     const destino = grupoId ? datos.grupos.find((x) => x.id === grupoId)?.nombre : 'tus gastos personales';
@@ -271,7 +298,10 @@ export default function App() {
   }
 
   async function agregar(datosGasto) {
-    await hacer(() => crearGasto({ ...datosGasto, grupoId: grupo?.id || null }), { lanzar: true });
+    // Gasto personal de hoy: la zona sale de dónde está el teléfono (no de lo que diga el nombre)
+    const reciente = !grupo && Math.abs(Date.now() - new Date(datosGasto.fecha || Date.now())) < 6 * 3600 * 1000;
+    const donde = reciente ? await ubicacionActual() : {};
+    await hacer(() => crearGasto({ ...datosGasto, ...donde, grupoId: grupo?.id || null }), { lanzar: true });
     setPanel(null);
     const m = claveMes(new Date(datosGasto.fecha));
     setMes(m < MES_INICIO ? MES_INICIO : m);
@@ -321,7 +351,7 @@ export default function App() {
     const delMes = base.filter((g) => mesDeFecha(g.fecha) === mes && yaPaso(g));
     // Si es el mes en curso, compara contra los mismos días del mes anterior
     const delPrev = base.filter((g) => mesDeFecha(g.fecha) === prev && (!esMesActual || diaDelMes(g.fecha) <= hoy.getDate()));
-    const suma = (l) => l.reduce((s, g) => s + g.monto, 0);
+    const suma = (l) => l.reduce((s, g) => s + g.parte, 0);
     const total = suma(delMes);
     const totalPrev = suma(delPrev);
     const hayPrev = prev >= MES_INICIO;
@@ -340,8 +370,15 @@ export default function App() {
         .filter((m) => m.id !== CAJA || m.total > 0).sort((a, b) => b.total - a.total)
       : [];
 
+    // Por zona (solo personal): supermercado, comida y salidas
+    const conZona = grupo ? [] : delMes.filter((g) => llevaZona(g.categoria) && (!zonaCat || g.categoria === zonaCat));
+    const catsZona = grupo ? [] : categorias().filter((c) => llevaZona(c.nombre) && delMes.some((g) => g.categoria === c.nombre));
+    const porZona = ZONAS.map((z) => ({ ...z, total: suma(conZona.filter((g) => g.zona === z.id)), cantidad: conZona.filter((g) => g.zona === z.id).length }));
+    const sinZona = conZona.filter((g) => !g.zona);
+    const zonaOk = (g) => !zona || (llevaZona(g.categoria) && (!zonaCat || g.categoria === zonaCat) && (zona === 'sin' ? !g.zona : g.zona === zona));
+
     const movimientos = delMes
-      .filter((g) => !filtro || g.categoria === filtro)
+      .filter((g) => (!filtro || g.categoria === filtro) && zonaOk(g))
       .sort((a, b) => b.fecha.localeCompare(a.fecha));
     const dias = [];
     movimientos.forEach((g) => {
@@ -352,8 +389,32 @@ export default function App() {
 
     const pendientes = delMes.filter((g) => g.categoria === POR_CLASIFICAR);
     const proximosVisibles = proximos.filter((g) => !filtro || g.categoria === filtro);
-    return { total, totalPrev, hayPrev, esMesActual, prev, porCat, porPersona, totalGrupo, personaSel, dias, pendientes, proximos: proximosVisibles, cantidad: delMes.length };
-  }, [gastos, mes, filtro, grupo, persona]);  
+    return {
+      total, totalPrev, hayPrev, esMesActual, prev, porCat, porPersona, totalGrupo, personaSel, dias, pendientes, proximos: proximosVisibles, cantidad: delMes.length,
+      porZona, sinZona, catsZona, hayZona: conZona.length > 0 || Boolean(zonaCat),
+    };
+  }, [gastos, mes, filtro, grupo, persona, zona, zonaCat]);
+
+  // Te deben (personal, de todos los meses): pendientes agrupados por persona
+  const deben = useMemo(() => {
+    if (grupo) return [];
+    const m = {};
+    for (const g of datos.personal.movimientos || []) {
+      for (const k of g.cobros || []) {
+        if (k.pagado) continue;
+        const clave = k.persona.trim().toLowerCase();
+        (m[clave] ||= { persona: k.persona.trim(), total: 0, items: [] });
+        m[clave].total += k.monto;
+        m[clave].items.push({ ...k, comercio: g.comercio, fecha: g.fecha });
+      }
+    }
+    return Object.values(m).sort((a, b) => b.total - a.total);
+  }, [datos, grupo]);
+  const personasDeben = useMemo(() => {
+    const s = new Set();
+    for (const g of datos.personal.movimientos || []) for (const k of g.cobros || []) s.add(k.persona.trim());
+    return [...s].sort();
+  }, [datos]);  
 
   if (!conectado) {
     return <Acceso onEntrar={entrar} />;
@@ -462,6 +523,45 @@ export default function App() {
         )}
       </section>
 
+      {!grupo && deben.length > 0 && (
+        <section className="tarjeta categorias deben">
+          <h2 className="tit-icono"><HandCoins size={18} strokeWidth={2} color="var(--musgo)" /> Te deben {colones(deben.reduce((s, p) => s + p.total, 0))}</h2>
+          <ul className="deben-lista">
+            {deben.map((p) => {
+              const abierto = abiertoDeben === p.persona;
+              return (
+                <li key={p.persona}>
+                  <button className="deben-persona" onClick={() => setAbiertoDeben(abierto ? null : p.persona)} aria-expanded={abierto}>
+                    <span className="avatar">{p.persona.slice(0, 1).toUpperCase()}</span>
+                    <span>
+                      <strong>{p.persona}</strong>
+                      <span className="pequeno muted">{p.items.length} gasto{p.items.length === 1 ? '' : 's'} · toca para ver</span>
+                    </span>
+                    <span className="num">{colones(p.total)}</span>
+                  </button>
+                  {abierto && (
+                    <>
+                      <ul className="deben-items">
+                        {p.items.map((k) => (
+                          <li key={k.id} className="deben-item">
+                            <span>{nombreComercio(k.comercio)} · <span className="muted">{etiquetaDia(k.fecha.slice(0, 10))}</span></span>
+                            <span className="num">{colones(k.monto)}</span>
+                            <button className="cobro-btn" onClick={() => pagaron([k.id], p.persona)} aria-label="Ya me pagó esto" title="Ya me pagó esto"><Check size={15} strokeWidth={2.6} /></button>
+                          </li>
+                        ))}
+                      </ul>
+                      <button className="btn-sec btn-ancho" onClick={() => { setAbiertoDeben(null); pagaron(p.items.map((k) => k.id), p.persona); }}>
+                        <Check size={17} strokeWidth={2.4} /> {p.persona} ya me pagó todo
+                      </button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {grupo?.pagosGuias && grupo.guiasPendientes > 0 && (
         <button className="pendientes tarjeta" onClick={() => setPanel('guias')}>
           <Compass size={22} strokeWidth={2} color="#D9B24C" />
@@ -478,7 +578,7 @@ export default function App() {
           <CircleDashed size={22} strokeWidth={2} color="#D9B24C" />
           <span>
             <strong>{reporte.pendientes.length} gasto{reporte.pendientes.length === 1 ? '' : 's'} por clasificar</strong>
-            <span className="muted pequeno">{colones(reporte.pendientes.reduce((t, g) => t + g.monto, 0))} · tócalos para elegir su categoría</span>
+            <span className="muted pequeno">{colones(reporte.pendientes.reduce((t, g) => t + g.parte, 0))} · tócalos para elegir su categoría</span>
           </span>
           <ChevronRight size={18} color="var(--muted)" />
         </button>
@@ -535,13 +635,65 @@ export default function App() {
             </section>
           )}
 
+          {!grupo && reporte.hayZona && (() => {
+            const cuentan = reporte.porZona.filter((z) => !z.noCuenta);
+            const tot = cuentan.reduce((s, z) => s + z.total, 0);
+            const fuera = reporte.porZona.filter((z) => z.noCuenta && z.total > 0);
+            const verZona = (id) => { setZona(zona === id ? null : id); setFiltro(null); setTimeout(() => document.querySelector('.movs')?.scrollIntoView({ behavior: 'smooth' }), 50); };
+            return (
+              <section className="tarjeta categorias">
+                <h2 className="tit-icono"><MapPin size={17} strokeWidth={2} color="var(--musgo)" /> ¿Dónde gasto más?</h2>
+                <div className="zona-filtros">
+                  <button className={'chip-mini' + (!zonaCat ? ' activo' : '')} onClick={() => setZonaCat(null)}>Todo</button>
+                  {reporte.catsZona.map((c) => (
+                    <button key={c.nombre} className={'chip-mini' + (zonaCat === c.nombre ? ' activo' : '')} onClick={() => setZonaCat(zonaCat === c.nombre ? null : c.nombre)}>
+                      {c.nombre === 'Comida y restaurantes' ? 'Comida' : c.nombre}
+                    </button>
+                  ))}
+                </div>
+                {cuentan.map((z) => {
+                  const pct = tot ? Math.round((z.total / tot) * 100) : 0;
+                  return (
+                    <button key={z.id} className={'zona-fila' + (zona === z.id ? ' activo' : '') + (zona && zona !== z.id ? ' apagado' : '')} style={{ '--c': z.color }} onClick={() => verZona(z.id)}>
+                      <span className="zona-punto" />
+                      <span className="fila-txt">
+                        <span className="fila-nombre">{z.nombre}{z.sub && <span className="muted pequeno"> · {z.sub}</span>}</span>
+                        <span className="barra-pct"><span style={{ width: pct + '%' }} /></span>
+                      </span>
+                      <span className="fila-der">
+                        <span className="num">{colones(z.total)}</span>
+                        <span className="pequeno muted">{pct}% · {z.cantidad} gasto{z.cantidad === 1 ? '' : 's'}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+                {fuera.length > 0 && (
+                  <p className="muted pequeno zona-extra">
+                    No cuentan: {fuera.map((z, i) => <span key={z.id}>{i ? ' · ' : ''}<button className="btn-link" onClick={() => verZona(z.id)}>{z.nombre} {colones(z.total)}</button></span>)}
+                  </p>
+                )}
+                {reporte.sinZona.length > 0 && (
+                  <button className="pendientes zona-extra" onClick={() => verZona('sin')}>
+                    <MapPin size={20} strokeWidth={2} color="#D9B24C" />
+                    <span>
+                      <strong>{reporte.sinZona.length} gasto{reporte.sinZona.length === 1 ? '' : 's'} sin zona</strong>
+                      <span className="muted pequeno">{colones(reporte.sinZona.reduce((s, g) => s + g.parte, 0))} · tócalos para decir dónde fue</span>
+                    </span>
+                    <ChevronRight size={18} color="var(--muted)" />
+                  </button>
+                )}
+              </section>
+            );
+          })()}
+
           <section className="movs">
             <div className="movs-cab">
               <h2 className="tit-icono">
                 {filtro ? <><Badge categoria={filtro} size={15} className="mini-badge" />{filtro}</> : 'Movimientos'}
                 {nombrePersona && <span className="chip-persona">{nombrePersona}</span>}
               </h2>
-              {filtro && <button className="btn-link" onClick={() => setFiltro(null)}>Ver todos</button>}
+              {zona && !filtro && <span className="chip-persona">{zona === 'sin' ? 'Sin zona' : ZONAS.find((z) => z.id === zona)?.nombre}</span>}
+              {(filtro || zona) && <button className="btn-link" onClick={() => { setFiltro(null); setZona(null); }}>Ver todos</button>}
             </div>
             {reporte.proximos.length > 0 && (
               <div className="dia">
@@ -558,7 +710,7 @@ export default function App() {
                             {etiquetaDia(g.fecha.slice(0, 10))} · {hora(g.fecha)}
                           </span>
                         </span>
-                        <span className="num mov-monto">{colones(g.monto)}</span>
+                        <span className="num mov-monto">{colones(g.parte)}</span>
                       </button>
                     </li>
                   ))}
@@ -579,10 +731,12 @@ export default function App() {
                             {grupo ? (g.usuarioId === yo && !g.caja ? 'Tú' : g.quien) + ' · ' : ''}
                             {g.banco ? `${g.banco}${g.tipo === 'SINPE' ? ' · SINPE' : ''} · ` : ''}
                             {hora(g.fecha)}
+                            {!grupo && g.zona && llevaZona(g.categoria) ? ` · ${ZONAS.find((z) => z.id === g.zona)?.nombre}` : ''}
                             {g.categoria === POR_CLASIFICAR ? ' · toca para clasificar' : ''}
+                            {g.cobros?.length > 0 && <span className="mov-deben"> · de {colones(g.monto)}</span>}
                           </span>
                         </span>
-                        <span className="num mov-monto">{colones(g.monto)}</span>
+                        <span className="num mov-monto">{colones(g.parte)}</span>
                       </button>
                     </li>
                   ))}
@@ -609,6 +763,9 @@ export default function App() {
           onEditar={editarDetalle}
           miembros={grupo ? pagadoresDe(grupo) : []}
           onEliminar={eliminar}
+          onZona={ponerZona}
+          onCobro={cobro}
+          personasDeben={personasDeben}
           onCerrar={() => setEditando(null)}
         />
       )}

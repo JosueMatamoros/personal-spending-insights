@@ -440,3 +440,55 @@ input, select, textarea { font-size: max(16px, 1em); }
 .instalar-pasos { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 0.88rem; color: var(--muted); }
 .instalar-pasos b { color: var(--texto); font-weight: 600; }
 .instalar-pasos svg { vertical-align: -2px; color: var(--texto); }
+
+/* ── Zona y "me deben" ── */
+.det-parte { margin-top: -4px; }
+.zonas-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.chip-zona { justify-content: center; }
+.cobros { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.cobro { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--borde); }
+.cobro.pagado { opacity: 0.55; }
+.cobro.pagado .num { text-decoration: line-through; }
+.cobro-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cobro-txt strong { font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cobro-btn { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--superficie); color: var(--muted); border: 1px solid var(--borde); }
+.cobro-btn.ok { background: var(--musgo-suave); color: var(--musgo); border-color: var(--musgo-fuerte); }
+.cobro-form { margin-bottom: 6px; }
+.segmento { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--borde); margin-bottom: 12px; }
+.segmento button { height: 38px; border-radius: 10px; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.segmento button.activo { background: var(--musgo-suave); color: var(--musgo); }
+.dividir { display: flex; align-items: center; gap: 12px; }
+.dividir-txt { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.stepper { display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--borde); }
+.stepper button { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: var(--texto); }
+.stepper button:disabled { opacity: 0.3; }
+.stepper .num { min-width: 28px; text-align: center; font-size: 1.15rem; font-weight: 800; }
+.dividir-res { margin: 8px 0 12px; color: var(--musgo); }
+.cobro-filas { display: grid; gap: 8px; }
+.cobro-fila { display: grid; grid-template-columns: 1fr 120px auto; gap: 8px; align-items: center; }
+.cobro-fila.solo-nombre { grid-template-columns: 1fr auto; }
+.cobro-fila input { min-width: 0; height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--borde); background: var(--superficie-2); color: var(--texto); font: inherit; font-size: 16px; }
+.cobro-fila input:focus { outline: none; border-color: var(--musgo-fuerte); }
+.cobro-fijo { color: var(--muted); padding: 0 4px; }
+.cobro-mas { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; }
+.cobro-resumen { margin: 12px 0 0; color: var(--muted); }
+.chip-mini { padding: 7px 12px; border-radius: 99px; font-size: 0.8rem; font-weight: 600; background: var(--superficie-2); color: var(--texto); border: 1px solid var(--borde); }
+.mov-deben { color: var(--musgo); }
+
+/* Tarjeta "Te deben" */
+.deben-lista { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.deben-persona { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 4px; text-align: left; }
+.deben-persona > span:nth-child(2) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.deben-items { list-style: none; margin: 4px 0 10px 42px; padding: 0; display: grid; gap: 4px; }
+.deben-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.deben-item > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Tarjeta "Por zona" */
+.zona-filtros { display: flex; gap: 6px; overflow-x: auto; margin: 6px -4px 10px; padding: 0 4px 2px; }
+.zona-filtros .chip-mini.activo { background: var(--musgo-suave); color: var(--musgo); border-color: var(--musgo-fuerte); }
+.zona-fila { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 14px; text-align: left; }
+.zona-fila.activo { background: var(--superficie-2); }
+.zona-fila.apagado { opacity: 0.45; }
+.zona-punto { width: 12px; height: 12px; border-radius: 99px; background: var(--c); flex: none; }
+.zona-fila .fila-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.zona-extra { margin-top: 6px; }

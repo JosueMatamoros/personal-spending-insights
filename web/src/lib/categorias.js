@@ -12,6 +12,7 @@ export const CATEGORIAS_INICIALES = [
   { nombre: 'Salud', icono: 'Pill', color: '#DE7F72' },
   { nombre: 'Entretenimiento', icono: 'Clapperboard', color: '#5FB8A5' },
   { nombre: 'Suscripciones', icono: 'Tv', color: '#8E9DDB' },
+  { nombre: 'Salidas', icono: 'PartyPopper', color: '#C98BB9', clave: 'Salidas' },
   { nombre: 'Otros', icono: 'Shapes', color: '#9AA396' },
 ];
 
@@ -37,3 +38,32 @@ export const normalizarCategoria = (c) => (porNombre[c] && c !== POR_CLASIFICAR 
 
 /** id de una categoría del ámbito actual a partir de su nombre. */
 export const idDe = (nombre) => porNombre[nombre]?.id || null;
+
+// ── Zonas (solo supermercado, comida y salidas) ──
+export const CLAVES_CON_ZONA = ['Supermercado', 'Comida y restaurantes', 'Salidas'];
+export const ZONAS = [
+  { id: 'pueblo', nombre: 'Pueblo', sub: 'Chachagua', color: '#8FB573' },
+  { id: 'ciudad', nombre: 'Ciudad', sub: 'San José · Cartago', color: '#6FA8C9' },
+  { id: 'viaje', nombre: 'Viaje', color: '#E0A458', noCuenta: true },
+  { id: 'ninguna', nombre: 'Ninguna', color: '#9AA396', noCuenta: true },
+];
+/** ¿Esta categoría (por nombre del ámbito actual) lleva zona? Usa la clave para que renombrarla no la rompa. */
+export const llevaZona = (nombre) => {
+  const c = porNombre[nombre];
+  return Boolean(c && CLAVES_CON_ZONA.includes(c.clave || c.nombre));
+};
+/** Lo que de verdad gasté yo: el total menos lo que otros me deben. */
+export const miParte = (g) => Math.max(0, g.monto - (g.cobros || []).reduce((s, k) => s + k.monto, 0));
+
+/** Dónde está el teléfono ahora (para la zona de un gasto anotado a mano). Si no hay permiso o tarda, nada. */
+export function ubicacionActual(ms = 5000) {
+  return new Promise((ok) => {
+    if (!navigator.geolocation) return ok({});
+    const t = setTimeout(() => ok({}), ms);
+    navigator.geolocation.getCurrentPosition(
+      (p) => { clearTimeout(t); ok({ lat: p.coords.latitude, lng: p.coords.longitude }); },
+      () => { clearTimeout(t); ok({}); },
+      { enableHighAccuracy: false, maximumAge: 10 * 60 * 1000, timeout: ms },
+    );
+  });
+}
